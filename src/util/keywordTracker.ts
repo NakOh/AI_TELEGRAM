@@ -1,14 +1,25 @@
+import type { ApiChat } from '../api/types';
 import type { GlobalState } from '../global/types';
 
 const WINDOW_MS = 60 * 60 * 1000;
-const MAX_ENTRIES = 5000;
+const MAX_ENTRIES = 10000;
+const MIN_COUNT = 2;
+const GENERIC_CHAT_RATIO = 0.5;
+const STORAGE_KEY = 'trendingEntriesV1';
+const SAVE_DEBOUNCE_MS = 3000;
 
-type Entry = { keyword: string; timestamp: number };
+type Entry = { keyword: string; chatId: string; timestamp: number };
 
 const entries: Entry[] = [];
 const listeners = new Set<() => void>();
 const backfilledChats = new Set<string>();
+const seenMessages = new Set<string>();
 let isBackfilling = false;
+let saveTimer: number | undefined;
+
+function isChannel(chat: ApiChat | undefined): boolean {
+  return chat?.type === 'chatTypeChannel';
+}
 
 const STOPWORDS = new Set([
   '있습니다', '없습니다', '합니다', '입니다', '그리고', '하지만', '그러나',
@@ -21,9 +32,15 @@ const STOPWORDS = new Set([
   '만큼', '처럼', '보다', '대한', '위한', '통해', '보면', '하면', '이라',
   '으로', '에서', '까지', '부터', '에게', '한테', '라고', '이라고', '라는',
   '이라는', '라서', '이라서', '라면', '이라면',
+  '마감', '주말', '평일', '아침', '저녁', '오후', '오전', '내일', '어제',
+  '올해', '작년', '내년', '지난주', '이번주', '다음주', '이번달', '다음달',
+  '신청', '조건', '참여', '발표', '공지', '안내', '소식', '최근',
+  '시작', '종료', '진행', '확인', '가능', '필요', '사용', '이용',
+  '관련', '경우', '부분', '내용', '상태', '상황', '방법', '결과',
   'the', 'and', 'for', 'you', 'are', 'with', 'that', 'this', 'from', 'have',
   'has', 'was', 'were', 'been', 'will', 'your', 'our', 'all', 'can', 'but',
-  'not', 'its', 'their',
+  'not', 'its', 'their', 'about', 'out', 'get', 'got', 'now', 'new', 'one',
+  'two', 'may', 'say', 'says', 'said', 'just', 'also',
 ]);
 
 const PARTICLES = [
@@ -49,7 +66,7 @@ function extractKeywords(text: string): string[] {
   const result: string[] = [];
   for (const raw of tokens) {
     if (!raw) continue;
-    if (/^[#$]\w+/.test(raw)) {
+    if (/^[#$][\p{L}\p{N}_]{2,}/u.test(raw)) {
       result.push(raw.toLowerCase());
       continue;
     }
@@ -60,6 +77,7 @@ function extractKeywords(text: string): string[] {
     const lower = token.toLowerCase();
     if (lower.length < 2) continue;
     if (/^\d+$/.test(lower)) continue;
+    if (/^[a-z0-9]+$/.test(lower) && lower.length < 3) continue;
     if (STOPWORDS.has(lower)) continue;
     result.push(lower);
   }
@@ -74,36 +92,99 @@ function prune() {
   if (entries.length > MAX_ENTRIES) {
     entries.splice(0, entries.length - MAX_ENTRIES);
   }
+  // Keep seenMessages bounded
+  if (seenMessages.size > MAX_ENTRIES * 2) {
+    seenMessages.clear();
+  }
 }
 
 function notify() {
   listeners.forEach((l) => l());
 }
 
-function pushSilent(text: string, timestamp: number) {
-  const keywords = extractKeywords(text);
-  if (!keywords.length) return;
-  for (const k of keywords) {
-    entries.push({ keyword: k, timestamp });
+function loadFromStorage() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return;
+    const parsed = JSON.parse(raw) as Entry[];
+    if (!Array.isArray(parsed)) return;
+    const cutoff = Date.now() - WINDOW_MS;
+    for (const e of parsed) {
+      if (!e || typeof e !== 'object') continue;
+      if (typeof e.keyword !== 'string' || typeof e.timestamp !== 'number') continue;
+      if (e.timestamp < cutoff) continue;
+      entries.push({
+        keyword: e.keyword,
+        chatId: typeof e.chatId === 'string' ? e.chatId : '',
+        timestamp: e.timestamp,
+      });
+    }
+  } catch {
+    // ignore
   }
 }
 
-export function pushMessageText(text: string, timestamp: number = Date.now()) {
-  pushSilent(text, timestamp);
+function scheduleSave() {
+  if (saveTimer !== undefined) return;
+  saveTimer = window.setTimeout(() => {
+    saveTimer = undefined;
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
+    } catch {
+      // ignore quota errors
+    }
+  }, SAVE_DEBOUNCE_MS);
+}
+
+loadFromStorage();
+
+function pushSilent(text: string, timestamp: number, chatId: string) {
+  const keywords = extractKeywords(text);
+  if (!keywords.length) return;
+  for (const k of keywords) {
+    entries.push({ keyword: k, chatId, timestamp });
+  }
+  scheduleSave();
+}
+
+export function pushMessageText(
+  text: string,
+  timestamp: number = Date.now(),
+  chatId: string = '',
+) {
+  pushSilent(text, timestamp, chatId);
   prune();
   notify();
 }
 
 export function getRanking(limit = 10): Array<{ keyword: string; count: number }> {
   prune();
-  const counts = new Map<string, number>();
+  const perKeyword = new Map<string, { count: number; chats: Set<string> }>();
+  const allChats = new Set<string>();
   for (const e of entries) {
-    counts.set(e.keyword, (counts.get(e.keyword) || 0) + 1);
+    if (e.chatId) allChats.add(e.chatId);
+    let info = perKeyword.get(e.keyword);
+    if (!info) {
+      info = { count: 0, chats: new Set() };
+      perKeyword.set(e.keyword, info);
+    }
+    info.count += 1;
+    if (e.chatId) info.chats.add(e.chatId);
   }
-  return Array.from(counts.entries())
-    .sort((a, b) => b[1] - a[1])
+  const totalChats = Math.max(allChats.size, 1);
+
+  return Array.from(perKeyword.entries())
+    .map(([keyword, { count, chats }]) => {
+      const chatCount = Math.max(chats.size, 1);
+      const idf = Math.log((totalChats + 1) / chatCount) + 1;
+      const score = count * idf;
+      return { keyword, count, chatCount, score };
+    })
+    .filter(({ count }) => count >= MIN_COUNT)
+    .filter(({ chatCount }) => totalChats < 4 || chatCount <= totalChats * GENERIC_CHAT_RATIO)
+    .sort((a, b) => b.score - a.score)
     .slice(0, limit)
-    .map(([keyword, count]) => ({ keyword, count }));
+    .map(({ keyword, count }) => ({ keyword, count }));
 }
 
 export function getTotalTokenCount(): number {
@@ -122,12 +203,45 @@ export function subscribeKeywordTracker(fn: () => void) {
   };
 }
 
+export function markMessageSeen(chatId: string, messageId: number) {
+  seenMessages.add(`${chatId}:${messageId}`);
+}
+
+// Scan currently-loaded messages for any we haven't indexed yet.
+// Called periodically so messages loaded via chat opens get picked up.
+export function scanRecentMessages(global: GlobalState) {
+  const cutoff = Date.now() - WINDOW_MS;
+  let added = 0;
+  for (const chatId of Object.keys(global.messages.byChatId)) {
+    const chat = global.chats.byId[chatId];
+    if (!isChannel(chat)) continue;
+    const byId = global.messages.byChatId[chatId]?.byId;
+    if (!byId) continue;
+    for (const id in byId) {
+      const key = `${chatId}:${id}`;
+      if (seenMessages.has(key)) continue;
+      seenMessages.add(key);
+      const message = byId[id];
+      if (!message) continue;
+      const ts = message.date ? message.date * 1000 : 0;
+      if (ts < cutoff) continue;
+      const text = message.content?.text?.text;
+      if (!text) continue;
+      pushSilent(text, ts, chatId);
+      added += 1;
+    }
+  }
+  if (added > 0) {
+    prune();
+    notify();
+  }
+}
+
 export async function backfillFromGlobal(global: GlobalState) {
   if (isBackfilling) return;
   isBackfilling = true;
   notify();
 
-  // Yield so subscribers render the loading state before work starts
   await new Promise<void>((resolve) => { setTimeout(resolve, 0); });
 
   try {
@@ -140,7 +254,7 @@ export async function backfillFromGlobal(global: GlobalState) {
     for (const chatId of chatIds) {
       if (backfilledChats.has(chatId)) continue;
       const chat = global.chats.byId[chatId];
-      if (!chat?.isChannel) {
+      if (!isChannel(chat)) {
         backfilledChats.add(chatId);
         continue;
       }
@@ -151,21 +265,21 @@ export async function backfillFromGlobal(global: GlobalState) {
       }
 
       for (const id in messagesById) {
+        const key = `${chatId}:${id}`;
+        if (seenMessages.has(key)) continue;
+        seenMessages.add(key);
         const message = messagesById[id];
         if (!message) continue;
         const timestamp = message.date ? message.date * 1000 : 0;
         if (timestamp < cutoff) continue;
         const text = message.content?.text?.text;
         if (!text) continue;
-        pushSilent(text, timestamp);
+        pushSilent(text, timestamp, chatId);
       }
       backfilledChats.add(chatId);
 
-      // Yield to event loop and notify progress
       // eslint-disable-next-line no-await-in-loop
-      await new Promise<void>((resolve) => {
-        setTimeout(resolve, 0);
-      });
+      await new Promise<void>((resolve) => { setTimeout(resolve, 0); });
       prune();
       notify();
     }

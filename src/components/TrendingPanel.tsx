@@ -3,7 +3,7 @@ import { getGlobal } from '../global';
 
 import {
   backfillFromGlobal, getIsBackfilling, getRanking, getTotalTokenCount,
-  subscribeKeywordTracker,
+  scanRecentMessages, subscribeKeywordTracker,
 } from '../util/keywordTracker';
 
 import useShowTrending from '../hooks/useShowTrending';
@@ -22,6 +22,7 @@ const TrendingPanel = () => {
     if (!isTrendingPanelShown) return undefined;
 
     const refresh = () => {
+      scanRecentMessages(getGlobal());
       setRanking(getRanking(10));
       setIsLoading(getIsBackfilling());
       setTokenCount(getTotalTokenCount());
