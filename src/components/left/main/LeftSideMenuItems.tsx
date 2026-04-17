@@ -34,6 +34,7 @@ import { useFolderManagerForUnreadCounters } from '../../../hooks/useFolderManag
 import useHideForwarded from '../../../hooks/useHideForwarded';
 import useLang from '../../../hooks/useLang';
 import useLastCallback from '../../../hooks/useLastCallback';
+import useShowTrending from '../../../hooks/useShowTrending';
 
 import AttachBotItem from '../../middle/composer/AttachBotItem';
 import MenuItem from '../../ui/MenuItem';
@@ -88,6 +89,7 @@ const LeftSideMenuItems = ({
   const lang = useLang();
 
   const { isHideForwardedMessages, toggleHideForwarded } = useHideForwarded();
+  const { isTrendingPanelShown, toggleShowTrending } = useShowTrending();
 
   const animationLevelValue = animationLevel !== ANIMATION_LEVEL_MIN
     ? (animationLevel === ANIMATION_LEVEL_MAX ? 'max' : 'mid') : 'min';
@@ -118,6 +120,11 @@ const LeftSideMenuItems = ({
   const handleToggleHideForwarded = useLastCallback((e: React.SyntheticEvent<HTMLElement>) => {
     e.stopPropagation();
     toggleHideForwarded();
+  });
+
+  const handleToggleTrending = useLastCallback((e: React.SyntheticEvent<HTMLElement>) => {
+    e.stopPropagation();
+    toggleShowTrending();
   });
 
   const handleAnimationLevelChange = useLastCallback((e: React.SyntheticEvent<HTMLElement>) => {
@@ -241,6 +248,18 @@ const LeftSideMenuItems = ({
                 id="hideforwarded"
                 label={lang('HideForwardedMessages')}
                 checked={isHideForwardedMessages}
+                noAnimation
+              />
+            </MenuItem>
+            <MenuItem
+              icon="stats"
+              onClick={handleToggleTrending}
+            >
+              <span className="menu-item-name">실시간 키워드</span>
+              <Switcher
+                id="trending"
+                label="실시간 키워드"
+                checked={isTrendingPanelShown}
                 noAnimation
               />
             </MenuItem>
