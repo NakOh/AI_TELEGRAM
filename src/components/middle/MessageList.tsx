@@ -399,8 +399,9 @@ const MessageList = ({
         ...(global.chats.listIds.active || []),
         ...(global.chats.listIds.archived || []),
       ]);
+      const hostChat = global.chats.byId[chatId];
       filteredMessages = orderedMessages.filter(
-        (message) => !shouldHideForwardedMessage(message, chatId, subscribedChatIds),
+        (message) => !shouldHideForwardedMessage(message, chatId, subscribedChatIds, hostChat),
       );
     }
 

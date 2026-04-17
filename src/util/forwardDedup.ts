@@ -1,4 +1,4 @@
-import type { ApiMessage } from '../api/types';
+import type { ApiChat, ApiMessage } from '../api/types';
 
 // Per-session record of which (chatId, messageId) was picked first for a given
 // source forward. Subsequent forwards of the same source get filtered out.
@@ -10,12 +10,20 @@ function getKey(message: ApiMessage): string | undefined {
   return `${fwd.fromChatId}:${fwd.fromMessageId}`;
 }
 
+export function isOwnedOrAdminChat(chat: ApiChat | undefined): boolean {
+  if (!chat) return false;
+  return Boolean(chat.isCreator || chat.adminRights);
+}
+
 export function shouldHideForwardedMessage(
   message: ApiMessage,
   chatId: string,
   subscribedChatIds: Set<string>,
+  hostChat?: ApiChat,
 ): boolean {
   if (!message.forwardInfo) return false;
+
+  if (isOwnedOrAdminChat(hostChat)) return false;
 
   const sourceChatId = message.forwardInfo.fromChatId;
   if (sourceChatId && subscribedChatIds.has(sourceChatId)) {

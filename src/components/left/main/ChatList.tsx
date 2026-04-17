@@ -111,7 +111,8 @@ const ChatList = ({
       if (!lastMessageId) return true;
       const message = global.messages.byChatId[id]?.byId[lastMessageId];
       if (!message) return true;
-      return !shouldHideForwardedMessage(message, id, subscribedChatIds);
+      const hostChat = global.chats.byId[id];
+      return !shouldHideForwardedMessage(message, id, subscribedChatIds, hostChat);
     });
   }, 300, [rawOrderedIds, isHideForwardedMessages, isSaved]);
 
