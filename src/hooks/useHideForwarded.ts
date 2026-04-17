@@ -36,9 +36,11 @@ export default function useHideForwarded() {
     };
   }, []);
 
+  const isHideForwardedMessages = currentValue;
+
   const toggleHideForwarded = useLastCallback(() => {
-    setStoredValue(!currentValue);
+    setStoredValue(!isHideForwardedMessages);
   });
 
-  return { isHideForwardedMessages: currentValue, toggleHideForwarded };
+  return { isHideForwardedMessages, toggleHideForwarded };
 }

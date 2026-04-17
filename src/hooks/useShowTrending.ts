@@ -36,12 +36,13 @@ export default function useShowTrending() {
     };
   }, []);
 
+  const isTrendingPanelShown = currentValue;
+
   const toggleShowTrending = useLastCallback(() => {
-    const next = !currentValue;
-    // eslint-disable-next-line no-console
-    console.log('[trending] toggle', { prev: currentValue, next });
-    setStoredValue(next);
+    // Use the value captured at render time (not the live module-level one)
+    // so a synchronous double-fire (label + input bubbling) is idempotent.
+    setStoredValue(!isTrendingPanelShown);
   });
 
-  return { isTrendingPanelShown: currentValue, toggleShowTrending };
+  return { isTrendingPanelShown, toggleShowTrending };
 }
