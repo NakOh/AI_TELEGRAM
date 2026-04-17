@@ -1,0 +1,27 @@
+node_modules
+.cache
+.env
+
+# Build outputs
+dist/
+electron-dist/
+src/lib/gramjs/build/
+build-contest/
+
+# Generated reports (rebuilt on each build)
+public/build-stats.json
+public/statoscope-report.html
+
+# Editor / OS
+.idea
+*.iml
+.DS_store
+.vscode
+
+# Playwright / misc
+tests/
+dev/perf/screenshot*
+
+# CI (only keep one workflow)
+.github/workflows/*
+!.github/workflows/package-and-publish.yml
