@@ -37,7 +37,10 @@ export default function useShowTrending() {
   }, []);
 
   const toggleShowTrending = useLastCallback(() => {
-    setStoredValue(!currentValue);
+    const next = !currentValue;
+    // eslint-disable-next-line no-console
+    console.log('[trending] toggle', { prev: currentValue, next });
+    setStoredValue(next);
   });
 
   return { isTrendingPanelShown: currentValue, toggleShowTrending };

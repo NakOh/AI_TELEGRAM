@@ -13,6 +13,8 @@ const TrendingPanel = () => {
   const [ranking, setRanking] = useState(() => getRanking(10));
 
   useEffect(() => {
+    // eslint-disable-next-line no-console
+    console.log('[trending] panel mount, shown=', isTrendingPanelShown);
     if (!isTrendingPanelShown) return undefined;
 
     const refresh = () => setRanking(getRanking(10));
