@@ -5,8 +5,8 @@ import type { GlobalState } from '../../../global/types';
 import type { FolderEditDispatch } from '../../../hooks/reducers/useFoldersReducer';
 import { LeftColumnContent } from '../../../types';
 
-import { isForwardedMessage } from '../../../global/helpers';
 import { selectChatLastMessageId } from '../../../global/selectors';
+import { shouldHideForwardedMessage } from '../../../util/forwardDedup';
 
 import {
   ALL_FOLDER_ID,
@@ -102,12 +102,16 @@ const ChatList = ({
     if (!rawOrderedIds || !isHideForwardedMessages) return rawOrderedIds;
     const global = getGlobal();
     const listType = isSaved ? 'saved' : 'all';
+    const subscribedChatIds = new Set<string>([
+      ...(global.chats.listIds.active || []),
+      ...(global.chats.listIds.archived || []),
+    ]);
     return rawOrderedIds.filter((id) => {
       const lastMessageId = selectChatLastMessageId(global, id, listType);
       if (!lastMessageId) return true;
       const message = global.messages.byChatId[id]?.byId[lastMessageId];
       if (!message) return true;
-      return !isForwardedMessage(message);
+      return !shouldHideForwardedMessage(message, id, subscribedChatIds);
     });
   }, 300, [rawOrderedIds, isHideForwardedMessages, isSaved]);
 

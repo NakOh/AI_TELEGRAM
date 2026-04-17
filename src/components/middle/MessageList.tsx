@@ -21,9 +21,9 @@ import {
   isChatChannel,
   isChatGroup,
   isChatMonoforum,
-  isForwardedMessage,
   isSystemBot,
 } from '../../global/helpers';
+import { shouldHideForwardedMessage } from '../../util/forwardDedup';
 import {
   selectBot,
   selectCanTranslateChat,
@@ -392,9 +392,17 @@ const MessageList = ({
       : ['id'];
 
     const orderedMessages = orderBy(listedMessages, orderRule);
-    const filteredMessages = isHideForwardedMessages
-      ? orderedMessages.filter((message) => !isForwardedMessage(message))
-      : orderedMessages;
+    let filteredMessages = orderedMessages;
+    if (isHideForwardedMessages) {
+      const global = getGlobal();
+      const subscribedChatIds = new Set<string>([
+        ...(global.chats.listIds.active || []),
+        ...(global.chats.listIds.archived || []),
+      ]);
+      filteredMessages = orderedMessages.filter(
+        (message) => !shouldHideForwardedMessage(message, chatId, subscribedChatIds),
+      );
+    }
 
     return filteredMessages.length
       ? groupMessages(
