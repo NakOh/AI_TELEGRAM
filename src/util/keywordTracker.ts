@@ -1,3 +1,5 @@
+import type { GlobalState } from '../global/types';
+
 const WINDOW_MS = 60 * 60 * 1000;
 const MAX_ENTRIES = 5000;
 
@@ -5,6 +7,8 @@ type Entry = { keyword: string; timestamp: number };
 
 const entries: Entry[] = [];
 const listeners = new Set<() => void>();
+const backfilledChats = new Set<string>();
+let isBackfilling = false;
 
 const STOPWORDS = new Set([
   '있습니다', '없습니다', '합니다', '입니다', '그리고', '하지만', '그러나',
@@ -45,14 +49,11 @@ function extractKeywords(text: string): string[] {
   const result: string[] = [];
   for (const raw of tokens) {
     if (!raw) continue;
-    // Hashtag / ticker preserve as-is
     if (/^[#$]\w+/.test(raw)) {
       result.push(raw.toLowerCase());
       continue;
     }
-    // Drop URLs
     if (/^https?:/.test(raw)) continue;
-    // Strip trailing punctuation
     let token = raw.replace(/^[^\p{L}\p{N}#$]+|[^\p{L}\p{N}]+$/gu, '');
     if (!token) continue;
     token = stripParticle(token);
@@ -79,12 +80,16 @@ function notify() {
   listeners.forEach((l) => l());
 }
 
-export function pushMessageText(text: string, timestamp: number = Date.now()) {
+function pushSilent(text: string, timestamp: number) {
   const keywords = extractKeywords(text);
   if (!keywords.length) return;
   for (const k of keywords) {
     entries.push({ keyword: k, timestamp });
   }
+}
+
+export function pushMessageText(text: string, timestamp: number = Date.now()) {
+  pushSilent(text, timestamp);
   prune();
   notify();
 }
@@ -101,9 +106,63 @@ export function getRanking(limit = 10): Array<{ keyword: string; count: number }
     .map(([keyword, count]) => ({ keyword, count }));
 }
 
+export function getIsBackfilling() {
+  return isBackfilling;
+}
+
 export function subscribeKeywordTracker(fn: () => void) {
   listeners.add(fn);
   return () => {
     listeners.delete(fn);
   };
+}
+
+export async function backfillFromGlobal(global: GlobalState) {
+  if (isBackfilling) return;
+  isBackfilling = true;
+  notify();
+
+  try {
+    const cutoff = Date.now() - WINDOW_MS;
+    const chatIds = [
+      ...(global.chats.listIds.active || []),
+      ...(global.chats.listIds.archived || []),
+    ];
+
+    for (const chatId of chatIds) {
+      if (backfilledChats.has(chatId)) continue;
+      const chat = global.chats.byId[chatId];
+      if (!chat?.isChannel) {
+        backfilledChats.add(chatId);
+        continue;
+      }
+      const messagesById = global.messages.byChatId[chatId]?.byId;
+      if (!messagesById) {
+        backfilledChats.add(chatId);
+        continue;
+      }
+
+      for (const id in messagesById) {
+        const message = messagesById[id];
+        if (!message) continue;
+        const timestamp = message.date ? message.date * 1000 : 0;
+        if (timestamp < cutoff) continue;
+        const text = message.content?.text?.text;
+        if (!text) continue;
+        pushSilent(text, timestamp);
+      }
+      backfilledChats.add(chatId);
+
+      // Yield to event loop and notify progress
+      // eslint-disable-next-line no-await-in-loop
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, 0);
+      });
+      prune();
+      notify();
+    }
+  } finally {
+    isBackfilling = false;
+    notify();
+  }
 }

@@ -1,6 +1,9 @@
 import { memo, useEffect, useState } from '../lib/teact/teact';
+import { getGlobal } from '../global';
 
-import { getRanking, subscribeKeywordTracker } from '../util/keywordTracker';
+import {
+  backfillFromGlobal, getIsBackfilling, getRanking, subscribeKeywordTracker,
+} from '../util/keywordTracker';
 
 import useShowTrending from '../hooks/useShowTrending';
 
@@ -11,15 +14,21 @@ const REFRESH_INTERVAL_MS = 5000;
 const TrendingPanel = () => {
   const { isTrendingPanelShown, toggleShowTrending } = useShowTrending();
   const [ranking, setRanking] = useState(() => getRanking(10));
+  const [isLoading, setIsLoading] = useState(() => getIsBackfilling());
 
   useEffect(() => {
-    // eslint-disable-next-line no-console
-    console.log('[trending] panel mount, shown=', isTrendingPanelShown);
     if (!isTrendingPanelShown) return undefined;
 
-    const refresh = () => setRanking(getRanking(10));
+    const refresh = () => {
+      setRanking(getRanking(10));
+      setIsLoading(getIsBackfilling());
+    };
+    refresh();
     const unsubscribe = subscribeKeywordTracker(refresh);
     const interval = window.setInterval(refresh, REFRESH_INTERVAL_MS);
+
+    // Kick off backfill once per session when panel first becomes visible
+    void backfillFromGlobal(getGlobal());
 
     return () => {
       unsubscribe();
@@ -44,18 +53,23 @@ const TrendingPanel = () => {
       </div>
       {ranking.length === 0 ? (
         <div className={styles.empty}>
-          채널에서 메시지가 수집되면 여기 표시됩니다.
+          {isLoading ? '데이터 수집 중…' : '채널에서 메시지가 수집되면 여기 표시됩니다.'}
         </div>
       ) : (
-        <ol className={styles.list}>
-          {ranking.map(({ keyword, count }, i) => (
-            <li key={keyword} className={styles.item}>
-              <span className={styles.rank}>{i + 1}</span>
-              <span className={styles.keyword}>{keyword}</span>
-              <span className={styles.count}>{count}</span>
-            </li>
-          ))}
-        </ol>
+        <>
+          {isLoading && (
+            <div className={styles.loadingStrip}>데이터 수집 중…</div>
+          )}
+          <ol className={styles.list}>
+            {ranking.map(({ keyword, count }, i) => (
+              <li key={keyword} className={styles.item}>
+                <span className={styles.rank}>{i + 1}</span>
+                <span className={styles.keyword}>{keyword}</span>
+                <span className={styles.count}>{count}</span>
+              </li>
+            ))}
+          </ol>
+        </>
       )}
     </div>
   );

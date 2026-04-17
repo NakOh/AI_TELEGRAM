@@ -39,8 +39,6 @@ export default function useShowTrending() {
   const isTrendingPanelShown = currentValue;
 
   const toggleShowTrending = useLastCallback(() => {
-    // Use the value captured at render time (not the live module-level one)
-    // so a synchronous double-fire (label + input bubbling) is idempotent.
     setStoredValue(!isTrendingPanelShown);
   });
 
