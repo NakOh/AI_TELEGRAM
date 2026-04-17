@@ -2,7 +2,8 @@ import { memo, useEffect, useState } from '../lib/teact/teact';
 import { getGlobal } from '../global';
 
 import {
-  backfillFromGlobal, getIsBackfilling, getRanking, subscribeKeywordTracker,
+  backfillFromGlobal, getIsBackfilling, getRanking, getTotalTokenCount,
+  subscribeKeywordTracker,
 } from '../util/keywordTracker';
 
 import useShowTrending from '../hooks/useShowTrending';
@@ -15,6 +16,7 @@ const TrendingPanel = () => {
   const { isTrendingPanelShown, toggleShowTrending } = useShowTrending();
   const [ranking, setRanking] = useState(() => getRanking(10));
   const [isLoading, setIsLoading] = useState(() => getIsBackfilling());
+  const [tokenCount, setTokenCount] = useState(() => getTotalTokenCount());
 
   useEffect(() => {
     if (!isTrendingPanelShown) return undefined;
@@ -22,6 +24,7 @@ const TrendingPanel = () => {
     const refresh = () => {
       setRanking(getRanking(10));
       setIsLoading(getIsBackfilling());
+      setTokenCount(getTotalTokenCount());
     };
     refresh();
     const unsubscribe = subscribeKeywordTracker(refresh);
@@ -41,7 +44,9 @@ const TrendingPanel = () => {
   return (
     <div className={styles.panel}>
       <div className={styles.header}>
-        <span className={styles.title}>실시간 키워드 · 1h</span>
+        <span className={styles.title}>
+          실시간 키워드 · 1h ({tokenCount})
+        </span>
         <button
           type="button"
           className={styles.close}

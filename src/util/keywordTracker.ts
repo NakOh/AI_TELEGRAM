@@ -106,6 +106,11 @@ export function getRanking(limit = 10): Array<{ keyword: string; count: number }
     .map(([keyword, count]) => ({ keyword, count }));
 }
 
+export function getTotalTokenCount(): number {
+  prune();
+  return entries.length;
+}
+
 export function getIsBackfilling() {
   return isBackfilling;
 }
