@@ -122,6 +122,9 @@ export async function backfillFromGlobal(global: GlobalState) {
   isBackfilling = true;
   notify();
 
+  // Yield so subscribers render the loading state before work starts
+  await new Promise<void>((resolve) => { setTimeout(resolve, 0); });
+
   try {
     const cutoff = Date.now() - WINDOW_MS;
     const chatIds = [
