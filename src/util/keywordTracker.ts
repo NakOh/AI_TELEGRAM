@@ -6,7 +6,7 @@ const RECENT_MS = 15 * 60 * 1000;
 const MAX_ENTRIES = 15000;
 const MIN_COUNT = 2;
 const GENERIC_CHAT_RATIO = 0.6;
-const STORAGE_KEY = 'trendingEntriesV4';
+const STORAGE_KEY = 'trendingEntriesV5';
 const SAVE_DEBOUNCE_MS = 3000;
 
 type Entry = {
@@ -125,14 +125,18 @@ function extractKeywords(text: string): Extracted[] {
   const result: Extracted[] = [];
   for (const raw of tokens) {
     if (!raw) continue;
-    // Hashtag / ticker: keep prefix, lowercase the rest
-    if (/^[#$][\p{L}\p{N}_]{2,}/u.test(raw)) {
+    // Hashtag / ticker: keep prefix, lowercase the rest.
+    // Require first body char to be a letter so "$2", "$25M", "$2B"
+    // (dollar amounts) don't get mistaken for tickers.
+    if (/^[#$][\p{L}][\p{L}\p{N}_]+/u.test(raw)) {
       const prefix = raw[0];
       const body = raw.slice(1).toLowerCase();
       result.push({ keyword: `${prefix}${body}`, boost: keywordShapeBoost(raw) });
       continue;
     }
-    let token = raw.replace(/^[^\p{L}\p{N}#$]+|[^\p{L}\p{N}]+$/gu, '');
+    // Strip leading $/# from tokens that didn't qualify as ticker/hashtag
+    // so "$2" degrades to "2" and gets filtered as a pure number below.
+    let token = raw.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '');
     if (!token) continue;
     const boost = keywordShapeBoost(token);
     token = stripParticle(token);
