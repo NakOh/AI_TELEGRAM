@@ -6,7 +6,7 @@ const RECENT_MS = 15 * 60 * 1000;
 const MAX_ENTRIES = 15000;
 const MIN_COUNT = 2;
 const GENERIC_CHAT_RATIO = 0.6;
-const STORAGE_KEY = 'trendingEntriesV3';
+const STORAGE_KEY = 'trendingEntriesV4';
 const SAVE_DEBOUNCE_MS = 3000;
 
 type Entry = {
@@ -47,6 +47,20 @@ const STOPWORDS = new Set([
   '이상', '이하', '미만', '초과', '정도', '약간', '대략',
   '모든', '각각', '전체', '일부', '기타', '등등',
   '생각', '경험', '느낌', '감사', '축하', '환영', '응원',
+  // Commerce / service noise
+  '등록', '구매', '판매', '결제', '환불', '할인', '가격', '상품', '제품',
+  '서비스', '회원', '고객', '혜택', '적립', '포인트', '쿠폰', '이용권',
+  '선물', '증정', '지급', '배송', '주문', '취소', '변경', '환전', '입금', '출금',
+  // Action / process noise
+  '안내', '문의', '요청', '응답', '처리', '완료', '지원', '추가', '수정',
+  '삭제', '생성', '표시', '선택', '입력', '제공', '업데이트', '도입',
+  '포함', '제외', '운영', '관리', '점검', '수행', '실시', '진행중',
+  // Status / qualifier noise
+  '정상', '제한', '해당', '기본', '일반', '특별', '무료', '유료', '공식',
+  '비트', '파트', '부문', '분야', '범위', '규모',
+  // Filler / discourse
+  '문제', '이슈', '사항', '목록', '항목', '내역', '정보', '자료', '데이터',
+  '의견', '생각', '느낌', '경우',
   'the', 'and', 'for', 'you', 'are', 'with', 'that', 'this', 'from', 'have',
   'has', 'was', 'were', 'been', 'will', 'your', 'our', 'all', 'can', 'but',
   'not', 'its', 'their', 'about', 'out', 'get', 'got', 'now', 'new', 'one',
@@ -251,14 +265,19 @@ export function getRanking(limit = 10): Array<{ keyword: string; count: number }
     const baselineRate = a.baselineWeight / baselineMinutes;
     const burst = (recentRate + 0.1) / (baselineRate + 0.3);
     const resonance = Math.log(a.chats.size + 1) + 0.5;
-    const score = a.totalWeight * burst * resonance;
+    // Recency-first: a trend is what's hot *now*, not what's always popular.
+    // We use recent + a small fraction of baseline to keep stable signal
+    // from appearing jittery when traffic briefly pauses.
+    const recencyWeight = a.recentWeight + a.baselineWeight * 0.15;
+    const score = recencyWeight * burst * resonance;
     return {
-      keyword, count: a.count, chatCount: a.chats.size, score,
+      keyword, count: a.count, chatCount: a.chats.size, recentWeight: a.recentWeight, score,
     };
   });
 
   return scored
     .filter(({ count }) => count >= MIN_COUNT)
+    .filter(({ recentWeight }) => recentWeight > 0)
     .filter(({ chatCount, keyword }) => {
       if (keyword.startsWith('#') || keyword.startsWith('$')) return true;
       return totalChats < 4 || chatCount <= totalChats * GENERIC_CHAT_RATIO;
