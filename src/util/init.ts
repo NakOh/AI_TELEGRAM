@@ -7,6 +7,10 @@ import {
 } from '../global/index';
 import { INITIAL_GLOBAL_STATE } from '../global/initialState';
 import { updatePasscodeSettings } from '../global/reducers';
+import {
+  loadDashboardMessagesIntoGlobal,
+  startDashboardCacheLoop,
+} from './dashboardMessageCache';
 import { cloneDeep } from './iteratees';
 import { clearStoredSession } from './sessions';
 
@@ -41,5 +45,9 @@ export async function initGlobal(force: boolean = false, prevGlobal?: GlobalStat
     }
   }
 
+  global = await loadDashboardMessagesIntoGlobal(global);
+
   setGlobal(global);
+
+  startDashboardCacheLoop(getGlobal);
 }
