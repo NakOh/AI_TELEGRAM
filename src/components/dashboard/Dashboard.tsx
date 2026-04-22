@@ -169,6 +169,7 @@ const Dashboard = () => {
                 <MessageCard
                   key={id}
                   item={item}
+                  searchQuery={search}
                   isExpanded={expandedId === id}
                   onToggle={() => setExpandedId(expandedId === id ? undefined : id)}
                 />
@@ -197,7 +198,15 @@ const Dashboard = () => {
           ) : (
             <ol className={styles.trendingList}>
               {trending.map(({ keyword, count }, i) => (
-                <li key={keyword} className={styles.trendingItem}>
+                <li
+                  key={keyword}
+                  className={`${styles.trendingItem} ${styles.trendingItemClickable}`}
+                  onClick={() => {
+                    const query = keyword.replace(/^[#$]/, '');
+                    setSearch(query);
+                    setTab('all');
+                  }}
+                >
                   <span className={styles.trendingRank}>{i + 1}</span>
                   <span className={styles.trendingKeyword}>{keyword}</span>
                   <span className={styles.trendingCount}>{count}</span>
