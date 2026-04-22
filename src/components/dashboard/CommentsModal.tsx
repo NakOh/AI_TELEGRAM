@@ -13,6 +13,7 @@ import { getChatAvatarHash } from '../../global/helpers';
 
 import MiniComposer from './MiniComposer';
 import ReactionsBar from './ReactionsBar';
+import renderEntities from './renderEntities';
 
 import styles from './CommentsModal.module.scss';
 
@@ -67,7 +68,11 @@ const CommentRow = memo(({ discussionChatId, message }: { discussionChatId: stri
             {formatDate((message.date || 0) * 1000)}
           </span>
         </div>
-        {text && <div className={styles.replyText}>{text}</div>}
+        {text && (
+          <div className={styles.replyText}>
+            {renderEntities(text, message.content?.text?.entities)}
+          </div>
+        )}
         <ReactionsBar chatId={discussionChatId} message={message} />
       </div>
     </div>
@@ -147,7 +152,9 @@ const CommentsModal = ({ chatId, messageId, onClose }: OwnProps) => {
               {state.topMessages.map((m) => (
                 <div key={m.id} className={styles.topMessage}>
                   {m.content?.text?.text && (
-                    <div className={styles.topMessageText}>{m.content.text.text}</div>
+                    <div className={styles.topMessageText}>
+                      {renderEntities(m.content.text.text, m.content.text.entities)}
+                    </div>
                   )}
                   <ReactionsBar chatId={state.discussionChatId} message={m} />
                 </div>

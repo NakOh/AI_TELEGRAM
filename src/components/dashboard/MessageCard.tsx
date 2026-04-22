@@ -9,6 +9,7 @@ import { getChatAvatarHash } from '../../global/helpers';
 import useMedia from '../../hooks/useMedia';
 
 import ReactionsBar from './ReactionsBar';
+import renderEntities from './renderEntities';
 
 import styles from './Dashboard.module.scss';
 
@@ -100,7 +101,7 @@ const MessageCard = ({
 
         {item.text && (
           <div className={styles.cardBody}>
-            {renderHighlighted(item.text, searchQuery)}
+            {renderEntities(item.text, item.entities, searchQuery)}
           </div>
         )}
 

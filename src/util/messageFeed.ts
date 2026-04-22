@@ -1,4 +1,4 @@
-import type { ApiMessage } from '../api/types';
+import type { ApiMessage, ApiMessageEntity } from '../api/types';
 import type { GlobalState } from '../global/types';
 
 import { getPhotoMediaHash } from '../global/helpers';
@@ -10,6 +10,7 @@ export interface FeedItem {
   messageId: number;
   chatTitle: string;
   text: string;
+  entities?: ApiMessageEntity[];
   timestamp: number;
   category: CategoryKey;
   viewsCount?: number;
@@ -95,6 +96,7 @@ export function collectFeed(global: GlobalState, options: FeedOptions = {}): Fee
         messageId: message.id,
         chatTitle: getChatTitle(global, chatId),
         text: classifyText,
+        entities: message.content?.text?.entities,
         timestamp,
         category: itemCategory,
         viewsCount: message.viewsCount,
