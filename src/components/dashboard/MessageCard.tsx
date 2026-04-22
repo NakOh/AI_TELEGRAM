@@ -13,8 +13,7 @@ import styles from './Dashboard.module.scss';
 type OwnProps = {
   item: FeedItem;
   searchQuery?: string;
-  isExpanded: boolean;
-  onToggle: () => void;
+  onOpen: () => void;
 };
 
 function formatRelativeTime(timestamp: number): string {
@@ -61,15 +60,8 @@ function renderHighlighted(text: string, query?: string): React.ReactNode {
   return parts;
 }
 
-function buildTelegramUrl(chatId: string, messageId: number, username?: string): string {
-  if (username) return `https://t.me/${username}/${messageId}`;
-  // Private channel: strip the -100 prefix used by Telegram client ids
-  const internal = chatId.replace(/^-?100/, '');
-  return `https://t.me/c/${internal}/${messageId}`;
-}
-
 const MessageCard = ({
-  item, searchQuery, isExpanded, onToggle,
+  item, searchQuery, onOpen,
 }: OwnProps) => {
   const imageUrl = useMedia(item.photoHash);
 
@@ -77,21 +69,12 @@ const MessageCard = ({
   const chat = global.chats.byId[item.chatId];
   const avatarHash = chat ? getChatAvatarHash(chat) : undefined;
   const avatarUrl = useMedia(avatarHash);
-  const username = (chat as { usernames?: Array<{ username: string }> } | undefined)?.usernames?.[0]?.username
-    || (chat as { username?: string } | undefined)?.username;
-
   const catDef = getCategoryDef(item.category);
   const mediaBadge = item.mediaKind && !item.photoHash ? MEDIA_ICON[item.mediaKind] : undefined;
   const firstLetter = item.chatTitle?.[0] || '#';
 
-  const openExternal = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    const url = buildTelegramUrl(item.chatId, item.messageId, username);
-    window.open(url, '_blank');
-  };
-
   return (
-    <article className={styles.card} onClick={onToggle}>
+    <article className={styles.card} onClick={onOpen}>
       <div className={styles.cardAvatarCol}>
         <div className={styles.cardAvatar}>
           {avatarUrl ? <img src={avatarUrl} alt="" /> : firstLetter}
@@ -112,7 +95,7 @@ const MessageCard = ({
         </div>
 
         {item.text && (
-          <div className={`${styles.cardBody} ${isExpanded ? styles.expanded : ''}`}>
+          <div className={styles.cardBody}>
             {renderHighlighted(item.text, searchQuery)}
           </div>
         )}
@@ -123,13 +106,12 @@ const MessageCard = ({
           </div>
         )}
 
-        <div className={styles.cardFooter}>
-          {item.viewsCount ? <span>👁 {item.viewsCount.toLocaleString()}</span> : undefined}
-          {item.reactionsCount ? <span>💬 {item.reactionsCount}</span> : undefined}
-          <button type="button" className={styles.cardOpenBtn} onClick={openExternal}>
-            💬 댓글/원본 열기
-          </button>
-        </div>
+        {(item.viewsCount || item.reactionsCount) && (
+          <div className={styles.cardFooter}>
+            {item.viewsCount ? <span>👁 {item.viewsCount.toLocaleString()}</span> : undefined}
+            {item.reactionsCount ? <span>💬 {item.reactionsCount}</span> : undefined}
+          </div>
+        )}
       </div>
     </article>
   );

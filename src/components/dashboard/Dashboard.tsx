@@ -14,6 +14,7 @@ import {
 
 import useHideForwarded from '../../hooks/useHideForwarded';
 
+import CommentsModal from './CommentsModal';
 import MessageCard from './MessageCard';
 
 import styles from './Dashboard.module.scss';
@@ -28,7 +29,7 @@ type Tab = 'all' | CategoryKey;
 const Dashboard = () => {
   const [search, setSearch] = useState('');
   const [tab, setTab] = useState<Tab>('all');
-  const [expandedId, setExpandedId] = useState<string | undefined>();
+  const [openCard, setOpenCard] = useState<{ chatId: string; messageId: number } | undefined>();
   const [tick, setTick] = useState(0);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const settingsRef = useRef<HTMLDivElement>();
@@ -170,8 +171,7 @@ const Dashboard = () => {
                   key={id}
                   item={item}
                   searchQuery={search}
-                  isExpanded={expandedId === id}
-                  onToggle={() => setExpandedId(expandedId === id ? undefined : id)}
+                  onOpen={() => setOpenCard({ chatId: item.chatId, messageId: item.messageId })}
                 />
               );
             })
@@ -231,6 +231,14 @@ const Dashboard = () => {
           </ol>
         </div>
       </aside>
+
+      {openCard && (
+        <CommentsModal
+          chatId={openCard.chatId}
+          messageId={openCard.messageId}
+          onClose={() => setOpenCard(undefined)}
+        />
+      )}
     </div>
   );
 };
