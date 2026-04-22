@@ -40,7 +40,7 @@ function getMediaInfo(message: ApiMessage): { photoHash?: string; mediaKind?: Fe
   const content = message.content;
   if (!content) return {};
   if (content.photo) {
-    return { photoHash: getPhotoMediaHash(content.photo, 'pictogram'), mediaKind: 'photo' };
+    return { photoHash: getPhotoMediaHash(content.photo, 'preview'), mediaKind: 'photo' };
   }
   if (content.video) return { mediaKind: 'video' };
   if (content.voice) return { mediaKind: 'voice' };
