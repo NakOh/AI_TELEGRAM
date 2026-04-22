@@ -2,13 +2,19 @@ import type { ApiChat } from '../api/types';
 import type { GlobalState } from '../global/types';
 
 const WINDOW_MS = 60 * 60 * 1000;
-const MAX_ENTRIES = 10000;
+const RECENT_MS = 15 * 60 * 1000;
+const MAX_ENTRIES = 15000;
 const MIN_COUNT = 2;
-const GENERIC_CHAT_RATIO = 0.5;
-const STORAGE_KEY = 'trendingEntriesV1';
+const GENERIC_CHAT_RATIO = 0.6;
+const STORAGE_KEY = 'trendingEntriesV2';
 const SAVE_DEBOUNCE_MS = 3000;
 
-type Entry = { keyword: string; chatId: string; timestamp: number };
+type Entry = {
+  keyword: string;
+  chatId: string;
+  timestamp: number;
+  weight: number;
+};
 
 const entries: Entry[] = [];
 const listeners = new Set<() => void>();
@@ -41,9 +47,8 @@ const STOPWORDS = new Set([
   'has', 'was', 'were', 'been', 'will', 'your', 'our', 'all', 'can', 'but',
   'not', 'its', 'their', 'about', 'out', 'get', 'got', 'now', 'new', 'one',
   'two', 'may', 'say', 'says', 'said', 'just', 'also',
-  // URL-ish fragments that slip past the URL guard
   'http', 'https', 'www', 'com', 'net', 'org', 'kr', 'co', 'io', 'app',
-  'html', 'utm', 'ref', 'src', 'bit', 'ly', 't.co', 'tco', 'png', 'jpg',
+  'html', 'utm', 'ref', 'src', 'bit', 'ly', 'tco', 'png', 'jpg',
 ]);
 
 const PARTICLES = [
@@ -63,27 +68,62 @@ function stripParticle(word: string): string {
   return word;
 }
 
-function extractKeywords(text: string): string[] {
+function messageStructureWeight(text: string): number {
+  let w = 1;
+  // Chatter penalty: "ㅋㅋㅋ", "ㅎㅎ", lots of emoji-only content
+  if (/[ㅋㅎ]{2,}/.test(text)) w *= 0.35;
+  // Short message penalty
+  if (text.length < 20) w *= 0.5;
+  else if (text.length < 50) w *= 0.8;
+  // Long structured message bonus (multi-line, bracket headers, bullet lists)
+  const lineCount = (text.match(/\n/g) || []).length + 1;
+  if (lineCount >= 3) w *= 1.4;
+  if (/\[[^\]]{1,20}\]/.test(text)) w *= 1.3; // [공지], [속보], [거래]
+  if (/^[\s]*[•·\-\*\d]+[.)]\s/m.test(text)) w *= 1.15;
+  return Math.max(0.15, Math.min(w, 2));
+}
+
+// Per-keyword "shape" boost. Hashtags / tickers / mixed-script proper nouns
+// get amplified because they're almost always informational.
+function keywordShapeBoost(original: string): number {
+  if (original.startsWith('#') || original.startsWith('$')) return 2;
+  // All-caps English 2-6 chars (tickers, acronyms)
+  if (/^[A-Z]{2,6}$/.test(original)) return 1.6;
+  // Mixed Korean + ASCII (ex: 스페이스X, 1000x)
+  if (/[\uac00-\ud7af]/.test(original) && /[A-Za-z0-9]/.test(original)) return 1.3;
+  // Proper-noun-ish: starts with capital, contains digits or X
+  if (/^[A-Z][A-Za-z0-9]{2,}$/.test(original)) return 1.25;
+  return 1;
+}
+
+type Extracted = { keyword: string; boost: number };
+
+function extractKeywords(text: string): Extracted[] {
   if (!text) return [];
-  // Strip URLs entirely before tokenizing
-  const cleaned = text.replace(/https?:\/\/\S+/g, ' ').replace(/\b[\w.-]+\.(?:com|net|org|io|co|kr|app|html|xyz|gg)\b\S*/gi, ' ');
+  const cleaned = text
+    .replace(/https?:\/\/\S+/g, ' ')
+    .replace(/\b[\w.-]+\.(?:com|net|org|io|co|kr|app|html|xyz|gg)\b\S*/gi, ' ');
   const tokens = cleaned.split(/[\s.,!?…·“”""''()\[\]{}<>~@|\-—/\\\n\r\t:;"「」『』]+/);
-  const result: string[] = [];
+  const result: Extracted[] = [];
   for (const raw of tokens) {
     if (!raw) continue;
+    // Hashtag / ticker: keep prefix, lowercase the rest
     if (/^[#$][\p{L}\p{N}_]{2,}/u.test(raw)) {
-      result.push(raw.toLowerCase());
+      const prefix = raw[0];
+      const body = raw.slice(1).toLowerCase();
+      result.push({ keyword: `${prefix}${body}`, boost: keywordShapeBoost(raw) });
       continue;
     }
     let token = raw.replace(/^[^\p{L}\p{N}#$]+|[^\p{L}\p{N}]+$/gu, '');
     if (!token) continue;
+    const boost = keywordShapeBoost(token);
     token = stripParticle(token);
     const lower = token.toLowerCase();
     if (lower.length < 2) continue;
     if (/^\d+$/.test(lower)) continue;
     if (/^[a-z0-9]+$/.test(lower) && lower.length < 3) continue;
     if (STOPWORDS.has(lower)) continue;
-    result.push(lower);
+    result.push({ keyword: lower, boost });
   }
   return result;
 }
@@ -96,7 +136,6 @@ function prune() {
   if (entries.length > MAX_ENTRIES) {
     entries.splice(0, entries.length - MAX_ENTRIES);
   }
-  // Keep seenMessages bounded
   if (seenMessages.size > MAX_ENTRIES * 2) {
     seenMessages.clear();
   }
@@ -121,6 +160,7 @@ function loadFromStorage() {
         keyword: e.keyword,
         chatId: typeof e.chatId === 'string' ? e.chatId : '',
         timestamp: e.timestamp,
+        weight: typeof e.weight === 'number' ? e.weight : 1,
       });
     }
   } catch {
@@ -143,10 +183,13 @@ function scheduleSave() {
 loadFromStorage();
 
 function pushSilent(text: string, timestamp: number, chatId: string) {
-  const keywords = extractKeywords(text);
-  if (!keywords.length) return;
-  for (const k of keywords) {
-    entries.push({ keyword: k, chatId, timestamp });
+  const extracted = extractKeywords(text);
+  if (!extracted.length) return;
+  const structure = messageStructureWeight(text);
+  for (const { keyword, boost } of extracted) {
+    entries.push({
+      keyword, chatId, timestamp, weight: structure * boost,
+    });
   }
   scheduleSave();
 }
@@ -163,29 +206,56 @@ export function pushMessageText(
 
 export function getRanking(limit = 10): Array<{ keyword: string; count: number }> {
   prune();
-  const perKeyword = new Map<string, { count: number; chats: Set<string> }>();
+  const now = Date.now();
+  const recentCutoff = now - RECENT_MS;
+  const baselineMinutes = (WINDOW_MS - RECENT_MS) / 60000;
+  const recentMinutes = RECENT_MS / 60000;
+
+  type Agg = {
+    totalWeight: number;
+    recentWeight: number;
+    baselineWeight: number;
+    count: number;
+    chats: Set<string>;
+  };
+  const agg = new Map<string, Agg>();
   const allChats = new Set<string>();
+
   for (const e of entries) {
     if (e.chatId) allChats.add(e.chatId);
-    let info = perKeyword.get(e.keyword);
-    if (!info) {
-      info = { count: 0, chats: new Set() };
-      perKeyword.set(e.keyword, info);
+    let a = agg.get(e.keyword);
+    if (!a) {
+      a = {
+        totalWeight: 0, recentWeight: 0, baselineWeight: 0, count: 0, chats: new Set(),
+      };
+      agg.set(e.keyword, a);
     }
-    info.count += 1;
-    if (e.chatId) info.chats.add(e.chatId);
+    a.totalWeight += e.weight;
+    a.count += 1;
+    if (e.timestamp >= recentCutoff) a.recentWeight += e.weight;
+    else a.baselineWeight += e.weight;
+    if (e.chatId) a.chats.add(e.chatId);
   }
   const totalChats = Math.max(allChats.size, 1);
 
-  return Array.from(perKeyword.entries())
-    .map(([keyword, { count, chats }]) => {
-      const chatCount = Math.max(chats.size, 1);
-      return { keyword, count, chatCount };
-    })
+  const scored = Array.from(agg.entries()).map(([keyword, a]) => {
+    const recentRate = a.recentWeight / recentMinutes;
+    const baselineRate = a.baselineWeight / baselineMinutes;
+    const burst = (recentRate + 0.1) / (baselineRate + 0.3);
+    const resonance = Math.log(a.chats.size + 1) + 0.5;
+    const score = a.totalWeight * burst * resonance;
+    return {
+      keyword, count: a.count, chatCount: a.chats.size, score,
+    };
+  });
+
+  return scored
     .filter(({ count }) => count >= MIN_COUNT)
-    // Drop keywords spread across most of the chats (too generic to be trending)
-    .filter(({ chatCount }) => totalChats < 4 || chatCount <= totalChats * GENERIC_CHAT_RATIO)
-    .sort((a, b) => b.count - a.count)
+    .filter(({ chatCount, keyword }) => {
+      if (keyword.startsWith('#') || keyword.startsWith('$')) return true;
+      return totalChats < 4 || chatCount <= totalChats * GENERIC_CHAT_RATIO;
+    })
+    .sort((a, b) => b.score - a.score)
     .slice(0, limit)
     .map(({ keyword, count }) => ({ keyword, count }));
 }
@@ -210,8 +280,6 @@ export function markMessageSeen(chatId: string, messageId: number) {
   seenMessages.add(`${chatId}:${messageId}`);
 }
 
-// Scan currently-loaded messages for any we haven't indexed yet.
-// Called periodically so messages loaded via chat opens get picked up.
 export function scanRecentMessages(global: GlobalState) {
   const cutoff = Date.now() - WINDOW_MS;
   let added = 0;
