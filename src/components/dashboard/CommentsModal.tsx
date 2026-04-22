@@ -2,7 +2,10 @@ import type React from '../../lib/teact/teact';
 import {
   memo, useEffect, useState,
 } from '../../lib/teact/teact';
-import { getGlobal } from '../../global';
+import { getActions, getGlobal } from '../../global';
+
+const REPLY_INPUT_ID = 'dashboard-reply-input';
+const REPLY_INPUT_SELECTOR = `#${REPLY_INPUT_ID}`;
 
 import type { ApiChat, ApiMessage } from '../../api/types';
 
@@ -11,7 +14,8 @@ import { callApi } from '../../api/gramjs';
 import useMedia from '../../hooks/useMedia';
 import { getChatAvatarHash } from '../../global/helpers';
 
-import MiniComposer from './MiniComposer';
+import Composer from '../common/Composer';
+
 import ReactionsBar from './ReactionsBar';
 
 import styles from './CommentsModal.module.scss';
@@ -70,6 +74,28 @@ const CommentRow = memo(({ discussionChatId, message }: { discussionChatId: stri
         {text && <div className={styles.replyText}>{text}</div>}
         <ReactionsBar chatId={discussionChatId} message={message} />
       </div>
+    </div>
+  );
+});
+
+const CommentsComposer = memo(({ chatId, threadId }: { chatId: string; threadId: number }) => {
+  useEffect(() => {
+    getActions().openThread({ chatId, threadId });
+  }, [chatId, threadId]);
+
+  return (
+    <div className={styles.composerRegion}>
+      <Composer
+        type="messageList"
+        chatId={chatId}
+        threadId={threadId}
+        messageListType="thread"
+        isReady
+        editableInputId={REPLY_INPUT_ID}
+        editableInputCssSelector={REPLY_INPUT_SELECTOR}
+        inputId={`${REPLY_INPUT_ID}-wrap`}
+        inputPlaceholder="댓글 입력…"
+      />
     </div>
   );
 });
@@ -166,14 +192,10 @@ const CommentsModal = ({ chatId, messageId, onClose }: OwnProps) => {
         </div>
 
         {state.kind === 'ready' && (
-          <div className={styles.composerRegion}>
-            <MiniComposer
-              chatId={state.discussionChatId}
-              threadId={state.threadId}
-              messageListType="thread"
-              placeholder="댓글 입력…"
-            />
-          </div>
+          <CommentsComposer
+            chatId={state.discussionChatId}
+            threadId={state.threadId}
+          />
         )}
       </div>
     </div>
