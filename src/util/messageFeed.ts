@@ -120,7 +120,7 @@ export function getCategoryCounts(
   const cutoff = Date.now() - windowMs;
   const counts: Record<CategoryKey, number> = {
     event: 0, announcement: 0, coin: 0, stock: 0, chart: 0,
-    breaking: 0, guide: 0, scam: 0, project: 0, chat: 0,
+    breaking: 0, guide: 0, scam: 0, chat: 0,
   };
 
   for (const chatId of Object.keys(global.messages.byChatId)) {

@@ -1,7 +1,9 @@
 import {
   memo, useEffect, useMemo, useRef, useState,
 } from '../../lib/teact/teact';
-import { getGlobal } from '../../global';
+import { getActions, getGlobal } from '../../global';
+
+import { MAIN_THREAD_ID } from '../../api/types';
 
 import type { CategoryKey } from '../../util/categoryClassifier';
 import { ALL_CATEGORIES } from '../../util/categoryClassifier';
@@ -12,6 +14,7 @@ import {
   backfillFromGlobal, getRanking, scanRecentMessages, subscribeKeywordTracker,
 } from '../../util/keywordTracker';
 
+import useHiddenCategories from '../../hooks/useHiddenCategories';
 import useHideForwarded from '../../hooks/useHideForwarded';
 
 import CommentsModal from './CommentsModal';
@@ -37,6 +40,17 @@ const Dashboard = () => {
   const settingsRef = useRef<HTMLDivElement>();
 
   const { isHideForwardedMessages, toggleHideForwarded } = useHideForwarded();
+  const { hiddenCategories, toggleHidden } = useHiddenCategories();
+
+  // Load history when a single channel is selected (owned channel click)
+  useEffect(() => {
+    if (!channelFilter) return;
+    const actions = getActions();
+    actions.loadViewportMessages({
+      chatId: channelFilter,
+      threadId: MAIN_THREAD_ID,
+    });
+  }, [channelFilter]);
 
   useEffect(() => {
     const bump = () => setTick((t) => (t + 1) % 1_000_000);
@@ -75,16 +89,18 @@ const Dashboard = () => {
   );
 
   const feed: FeedItem[] = useMemo(() => {
-    return collectFeed(global, {
-      windowMs: WINDOW_MS,
+    const raw = collectFeed(global, {
+      windowMs: channelFilter ? 365 * 24 * 60 * 60 * 1000 : WINDOW_MS,
       category: channelFilter ? 'all' : tab,
       search,
       limit: FEED_LIMIT,
       includeForwarded: !isHideForwardedMessages,
       chatId: channelFilter,
     });
+    if (channelFilter) return raw;
+    return raw.filter((item) => !hiddenCategories.has(item.category));
     // eslint-disable-next-line react-hooks-static-deps/exhaustive-deps
-  }, [tick, tab, search, global.messages, isHideForwardedMessages, channelFilter]);
+  }, [tick, tab, search, global.messages, isHideForwardedMessages, channelFilter, hiddenCategories]);
 
   const ownedChannels = useMemo(() => {
     const out: Array<{ id: string; title: string }> = [];
@@ -127,18 +143,21 @@ const Dashboard = () => {
           <span>전체</span>
           <span className={styles.navCount}>{totalAll}</span>
         </button>
-        {ALL_CATEGORIES.map((cat) => (
-          <button
-            key={cat.key}
-            type="button"
-            className={`${styles.navItem} ${tab === cat.key && !channelFilter ? styles.navItemActive : ''}`}
-            onClick={() => { setTab(cat.key); setChannelFilter(undefined); }}
-          >
-            <span className={styles.navIcon}>{cat.emoji}</span>
-            <span>{cat.label}</span>
-            <span className={styles.navCount}>{categoryCounts[cat.key] || 0}</span>
-          </button>
-        ))}
+        {ALL_CATEGORIES
+          .filter((cat) => !hiddenCategories.has(cat.key))
+          .map((cat) => (
+            <button
+              key={cat.key}
+              type="button"
+              className={`${styles.navItem} ${tab === cat.key && !channelFilter ? styles.navItemActive : ''}`}
+              onClick={() => { setTab(cat.key); setChannelFilter(undefined); }}
+              title={cat.description}
+            >
+              <span className={styles.navIcon}>{cat.emoji}</span>
+              <span>{cat.label}</span>
+              <span className={styles.navCount}>{categoryCounts[cat.key] || 0}</span>
+            </button>
+          ))}
 
         {ownedChannels.length > 0 && (
           <>
@@ -187,6 +206,19 @@ const Dashboard = () => {
                     onChange={toggleHideForwarded}
                   />
                 </label>
+                <div className={styles.settingsDivider} />
+                <div className={styles.settingsSectionTitle}>카테고리 숨기기</div>
+                {ALL_CATEGORIES.map((cat) => (
+                  <label key={cat.key} className={styles.settingRow} title={cat.description}>
+                    <span>{cat.emoji} {cat.label}</span>
+                    <input
+                      type="checkbox"
+                      className={styles.settingToggle}
+                      checked={hiddenCategories.has(cat.key)}
+                      onChange={() => toggleHidden(cat.key)}
+                    />
+                  </label>
+                ))}
               </div>
             )}
           </div>

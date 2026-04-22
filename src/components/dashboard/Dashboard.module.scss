@@ -494,3 +494,18 @@
 .settingToggle:checked::after {
   transform: translateX(1rem);
 }
+
+.settingsDivider {
+  height: 1px;
+  background: #2f3336;
+  margin: 0.5rem 0;
+}
+
+.settingsSectionTitle {
+  font-size: 0.75rem;
+  color: #71767b;
+  text-transform: uppercase;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  margin-bottom: 0.25rem;
+}
