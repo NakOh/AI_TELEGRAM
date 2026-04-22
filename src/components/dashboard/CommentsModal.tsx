@@ -1,3 +1,4 @@
+import type React from '../../lib/teact/teact';
 import {
   memo, useEffect, useState,
 } from '../../lib/teact/teact';
@@ -10,6 +11,9 @@ import { callApi } from '../../api/gramjs';
 import useMedia from '../../hooks/useMedia';
 import { getChatAvatarHash } from '../../global/helpers';
 
+import MiniComposer from './MiniComposer';
+import ReactionsBar from './ReactionsBar';
+
 import styles from './CommentsModal.module.scss';
 
 type OwnProps = {
@@ -21,7 +25,7 @@ type OwnProps = {
 type LoadState =
   | { kind: 'loading' }
   | { kind: 'error'; message: string }
-  | { kind: 'ready'; topMessages: ApiMessage[]; replies: ApiMessage[] };
+  | { kind: 'ready'; topMessages: ApiMessage[]; replies: ApiMessage[]; discussionChatId: string; threadId: number };
 
 function formatDate(ts: number): string {
   const d = new Date(ts);
@@ -37,7 +41,7 @@ function getChat(chatId: string): ApiChat | undefined {
   return getGlobal().chats.byId[chatId];
 }
 
-const CommentRow = memo(({ message }: { message: ApiMessage }) => {
+const CommentRow = memo(({ discussionChatId, message }: { discussionChatId: string; message: ApiMessage }) => {
   const senderId = message.senderId;
   const global = getGlobal();
   const user = senderId ? global.users.byId[senderId] : undefined;
@@ -50,7 +54,6 @@ const CommentRow = memo(({ message }: { message: ApiMessage }) => {
   const avatarUrl = useMedia(avatarHash);
 
   const text = message.content?.text?.text;
-  if (!text) return undefined;
 
   return (
     <div className={styles.replyRow}>
@@ -64,7 +67,8 @@ const CommentRow = memo(({ message }: { message: ApiMessage }) => {
             {formatDate((message.date || 0) * 1000)}
           </span>
         </div>
-        <div className={styles.replyText}>{text}</div>
+        {text && <div className={styles.replyText}>{text}</div>}
+        <ReactionsBar chatId={discussionChatId} message={message} />
       </div>
     </div>
   );
@@ -73,17 +77,15 @@ const CommentRow = memo(({ message }: { message: ApiMessage }) => {
 const CommentsModal = ({ chatId, messageId, onClose }: OwnProps) => {
   const [state, setState] = useState<LoadState>({ kind: 'loading' });
 
-  useEffect(() => {
-    let cancelled = false;
+  const reload = () => {
     const chat = getChat(chatId);
     if (!chat) {
       setState({ kind: 'error', message: '채널을 찾을 수 없습니다.' });
-      return () => { /* noop */ };
+      return;
     }
 
     callApi('fetchDiscussionMessage', { chat, messageId })
       .then((result) => {
-        if (cancelled) return;
         if (!result) {
           setState({ kind: 'error', message: '댓글을 불러올 수 없습니다. (비공개 채널이거나 댓글이 비활성화됨)' });
           return;
@@ -91,17 +93,33 @@ const CommentsModal = ({ chatId, messageId, onClose }: OwnProps) => {
         const topIds = new Set(result.topMessages.map((m) => m.id));
         const replies = result.messages.filter((m) => !topIds.has(m.id));
         replies.sort((a, b) => (a.date || 0) - (b.date || 0));
-        setState({ kind: 'ready', topMessages: result.topMessages, replies });
+        const discussionChatId = result.topMessages[0]?.chatId || chatId;
+        setState({
+          kind: 'ready',
+          topMessages: result.topMessages,
+          replies,
+          discussionChatId,
+          threadId: result.threadId,
+        });
       })
       .catch((err) => {
-        if (cancelled) return;
         setState({ kind: 'error', message: String(err?.message || err || '로드 실패') });
       });
+  };
 
-    return () => {
-      cancelled = true;
-    };
+  useEffect(() => {
+    setState({ kind: 'loading' });
+    reload();
+    // eslint-disable-next-line react-hooks-static-deps/exhaustive-deps
   }, [chatId, messageId]);
+
+  // Poll for new replies every 10s while the modal is open
+  useEffect(() => {
+    if (state.kind !== 'ready') return undefined;
+    const interval = window.setInterval(reload, 10000);
+    return () => window.clearInterval(interval);
+    // eslint-disable-next-line react-hooks-static-deps/exhaustive-deps
+  }, [state.kind, chatId, messageId]);
 
   const handleBackdrop = (e: React.MouseEvent) => {
     if (e.target === e.currentTarget) onClose();
@@ -127,22 +145,36 @@ const CommentsModal = ({ chatId, messageId, onClose }: OwnProps) => {
           {state.kind === 'ready' && (
             <>
               {state.topMessages.map((m) => (
-                m.content?.text?.text ? (
-                  <div key={m.id} className={styles.topMessage}>
-                    {m.content.text.text}
-                  </div>
-                ) : undefined
+                <div key={m.id} className={styles.topMessage}>
+                  {m.content?.text?.text && (
+                    <div className={styles.topMessageText}>{m.content.text.text}</div>
+                  )}
+                  <ReactionsBar chatId={state.discussionChatId} message={m} />
+                </div>
               ))}
               <div className={styles.replyList}>
                 {state.replies.length === 0 ? (
                   <div className={styles.stateNote}>아직 댓글이 없습니다.</div>
                 ) : (
-                  state.replies.map((m) => <CommentRow key={m.id} message={m} />)
+                  state.replies.map((m) => (
+                    <CommentRow key={m.id} discussionChatId={state.discussionChatId} message={m} />
+                  ))
                 )}
               </div>
             </>
           )}
         </div>
+
+        {state.kind === 'ready' && (
+          <div className={styles.composerRegion}>
+            <MiniComposer
+              chatId={state.discussionChatId}
+              threadId={state.threadId}
+              messageListType="thread"
+              placeholder="댓글 입력…"
+            />
+          </div>
+        )}
       </div>
     </div>
   );

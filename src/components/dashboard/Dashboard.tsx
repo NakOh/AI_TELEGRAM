@@ -19,6 +19,7 @@ import useHideForwarded from '../../hooks/useHideForwarded';
 
 import CommentsModal from './CommentsModal';
 import MessageCard from './MessageCard';
+import MiniComposer from './MiniComposer';
 import MyChannelItem from './MyChannelItem';
 
 import styles from './Dashboard.module.scss';
@@ -223,6 +224,16 @@ const Dashboard = () => {
             )}
           </div>
         </div>
+
+        {channelFilter && (
+          <div className={styles.channelComposerWrap}>
+            <MiniComposer
+              chatId={channelFilter}
+              threadId={MAIN_THREAD_ID}
+              placeholder={`${global.chats.byId[channelFilter]?.title || '채널'}에 공지 작성…`}
+            />
+          </div>
+        )}
 
         <div className={styles.feed}>
           {feed.length === 0 ? (

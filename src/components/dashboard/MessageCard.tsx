@@ -8,6 +8,8 @@ import { getChatAvatarHash } from '../../global/helpers';
 
 import useMedia from '../../hooks/useMedia';
 
+import ReactionsBar from './ReactionsBar';
+
 import styles from './Dashboard.module.scss';
 
 type OwnProps = {
@@ -69,6 +71,8 @@ const MessageCard = ({
   const chat = global.chats.byId[item.chatId];
   const avatarHash = chat ? getChatAvatarHash(chat) : undefined;
   const avatarUrl = useMedia(avatarHash);
+  const message = global.messages.byChatId[item.chatId]?.byId[item.messageId];
+
   const catDef = getCategoryDef(item.category);
   const mediaBadge = item.mediaKind && !item.photoHash ? MEDIA_ICON[item.mediaKind] : undefined;
   const firstLetter = item.chatTitle?.[0] || '#';
@@ -112,6 +116,8 @@ const MessageCard = ({
             {item.reactionsCount ? <span>💬 {item.reactionsCount}</span> : undefined}
           </div>
         )}
+
+        {message && <ReactionsBar chatId={item.chatId} message={message} />}
       </div>
     </article>
   );

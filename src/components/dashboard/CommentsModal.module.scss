@@ -66,13 +66,21 @@
 }
 
 .topMessage {
-  white-space: pre-wrap;
-  word-break: break-word;
   padding: 0.875rem 1rem;
   background: #16181c;
   border-radius: 0.75rem;
   font-size: 0.9375rem;
   line-height: 1.5;
+}
+
+.topMessageText {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.composerRegion {
+  border-top: 1px solid #2f3336;
+  padding: 0.75rem 1rem;
 }
 
 .replyList {
