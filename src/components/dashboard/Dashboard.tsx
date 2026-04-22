@@ -16,6 +16,7 @@ import useHideForwarded from '../../hooks/useHideForwarded';
 
 import CommentsModal from './CommentsModal';
 import MessageCard from './MessageCard';
+import MyChannelItem from './MyChannelItem';
 
 import styles from './Dashboard.module.scss';
 
@@ -29,6 +30,7 @@ type Tab = 'all' | CategoryKey;
 const Dashboard = () => {
   const [search, setSearch] = useState('');
   const [tab, setTab] = useState<Tab>('all');
+  const [channelFilter, setChannelFilter] = useState<string | undefined>();
   const [openCard, setOpenCard] = useState<{ chatId: string; messageId: number } | undefined>();
   const [tick, setTick] = useState(0);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -75,13 +77,27 @@ const Dashboard = () => {
   const feed: FeedItem[] = useMemo(() => {
     return collectFeed(global, {
       windowMs: WINDOW_MS,
-      category: tab,
+      category: channelFilter ? 'all' : tab,
       search,
       limit: FEED_LIMIT,
       includeForwarded: !isHideForwardedMessages,
+      chatId: channelFilter,
     });
     // eslint-disable-next-line react-hooks-static-deps/exhaustive-deps
-  }, [tick, tab, search, global.messages, isHideForwardedMessages]);
+  }, [tick, tab, search, global.messages, isHideForwardedMessages, channelFilter]);
+
+  const ownedChannels = useMemo(() => {
+    const out: Array<{ id: string; title: string }> = [];
+    for (const id of Object.keys(global.chats.byId)) {
+      const chat = global.chats.byId[id];
+      if (!chat || chat.type !== 'chatTypeChannel') continue;
+      if (!(chat.isCreator || chat.adminRights)) continue;
+      out.push({ id, title: chat.title || id });
+    }
+    out.sort((a, b) => a.title.localeCompare(b.title));
+    return out;
+    // eslint-disable-next-line react-hooks-static-deps/exhaustive-deps
+  }, [tick, global.chats]);
 
   const trending = useMemo(() => getRanking(10), [tick]);
 
@@ -91,9 +107,11 @@ const Dashboard = () => {
 
   const totalAll = Object.values(categoryCounts).reduce((a, b) => a + b, 0);
 
-  const currentTitle = tab === 'all'
-    ? '홈'
-    : `${ALL_CATEGORIES.find((c) => c.key === tab)?.emoji || ''} ${ALL_CATEGORIES.find((c) => c.key === tab)?.label || ''}`;
+  const currentTitle = channelFilter
+    ? (global.chats.byId[channelFilter]?.title || '내 채널')
+    : tab === 'all'
+      ? '홈'
+      : `${ALL_CATEGORIES.find((c) => c.key === tab)?.emoji || ''} ${ALL_CATEGORIES.find((c) => c.key === tab)?.label || ''}`;
 
   return (
     <div className={styles.dashboard}>
@@ -102,8 +120,8 @@ const Dashboard = () => {
         <div className={styles.brand}>📊 TG Dash</div>
         <button
           type="button"
-          className={`${styles.navItem} ${tab === 'all' ? styles.navItemActive : ''}`}
-          onClick={() => setTab('all')}
+          className={`${styles.navItem} ${tab === 'all' && !channelFilter ? styles.navItemActive : ''}`}
+          onClick={() => { setTab('all'); setChannelFilter(undefined); }}
         >
           <span className={styles.navIcon}>🏠</span>
           <span>전체</span>
@@ -113,14 +131,32 @@ const Dashboard = () => {
           <button
             key={cat.key}
             type="button"
-            className={`${styles.navItem} ${tab === cat.key ? styles.navItemActive : ''}`}
-            onClick={() => setTab(cat.key)}
+            className={`${styles.navItem} ${tab === cat.key && !channelFilter ? styles.navItemActive : ''}`}
+            onClick={() => { setTab(cat.key); setChannelFilter(undefined); }}
           >
             <span className={styles.navIcon}>{cat.emoji}</span>
             <span>{cat.label}</span>
             <span className={styles.navCount}>{categoryCounts[cat.key] || 0}</span>
           </button>
         ))}
+
+        {ownedChannels.length > 0 && (
+          <>
+            <div className={styles.navSectionTitle}>내 채널</div>
+            {ownedChannels.map((c) => {
+              const chat = global.chats.byId[c.id];
+              if (!chat) return undefined;
+              return (
+                <MyChannelItem
+                  key={c.id}
+                  chat={chat}
+                  onClick={() => setChannelFilter(channelFilter === c.id ? undefined : c.id)}
+                />
+              );
+            })}
+          </>
+        )}
+
         <div className={styles.navSpacer} />
         <div className={styles.navFooter}>
           채널 {totalChannels} · 최근 {WINDOW_HOURS}시간

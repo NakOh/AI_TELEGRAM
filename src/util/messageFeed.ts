@@ -25,6 +25,7 @@ export interface FeedOptions {
   search?: string;
   limit?: number;
   includeForwarded?: boolean;
+  chatId?: string;
 }
 
 function getChatTitle(global: GlobalState, chatId: string): string {
@@ -56,6 +57,7 @@ export function collectFeed(global: GlobalState, options: FeedOptions = {}): Fee
     search,
     limit = 200,
     includeForwarded = true,
+    chatId: chatIdFilter,
   } = options;
 
   const cutoff = Date.now() - windowMs;
@@ -63,6 +65,7 @@ export function collectFeed(global: GlobalState, options: FeedOptions = {}): Fee
   const items: FeedItem[] = [];
 
   for (const chatId of Object.keys(global.messages.byChatId)) {
+    if (chatIdFilter && chatId !== chatIdFilter) continue;
     const chat = global.chats.byId[chatId];
     if (chat?.type !== 'chatTypeChannel') continue;
     const byId = global.messages.byChatId[chatId]?.byId;
