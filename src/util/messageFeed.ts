@@ -1,6 +1,8 @@
 import type { ApiMessage } from '../api/types';
 import type { GlobalState } from '../global/types';
 
+import { getPhotoMediaHash } from '../global/helpers';
+
 import { classifyMessage, type CategoryKey } from './categoryClassifier';
 
 export interface FeedItem {
@@ -13,6 +15,8 @@ export interface FeedItem {
   viewsCount?: number;
   reactionsCount?: number;
   isForwarded: boolean;
+  photoHash?: string;
+  mediaKind?: 'photo' | 'video' | 'document' | 'voice' | 'audio';
 }
 
 export interface FeedOptions {
@@ -30,6 +34,19 @@ function getChatTitle(global: GlobalState, chatId: string): string {
 
 function getMessageText(message: ApiMessage): string {
   return message.content?.text?.text || '';
+}
+
+function getMediaInfo(message: ApiMessage): { photoHash?: string; mediaKind?: FeedItem['mediaKind'] } {
+  const content = message.content;
+  if (!content) return {};
+  if (content.photo) {
+    return { photoHash: getPhotoMediaHash(content.photo, 'pictogram'), mediaKind: 'photo' };
+  }
+  if (content.video) return { mediaKind: 'video' };
+  if (content.voice) return { mediaKind: 'voice' };
+  if (content.audio) return { mediaKind: 'audio' };
+  if (content.document) return { mediaKind: 'document' };
+  return {};
 }
 
 export function collectFeed(global: GlobalState, options: FeedOptions = {}): FeedItem[] {
@@ -57,21 +74,24 @@ export function collectFeed(global: GlobalState, options: FeedOptions = {}): Fee
       const timestamp = message.date ? message.date * 1000 : 0;
       if (timestamp < cutoff) continue;
       const text = getMessageText(message);
-      if (!text) continue;
+      const { photoHash, mediaKind } = getMediaInfo(message);
+      // Include media-only messages too (photo/video without caption)
+      if (!text && !mediaKind) continue;
 
       const isForwarded = Boolean(message.forwardInfo);
       if (!includeForwarded && isForwarded) continue;
 
-      const itemCategory = classifyMessage(text);
+      const classifyText = text || '';
+      const itemCategory = classifyMessage(classifyText);
       if (category !== 'all' && itemCategory !== category) continue;
 
-      if (searchLower && !text.toLowerCase().includes(searchLower)) continue;
+      if (searchLower && !classifyText.toLowerCase().includes(searchLower)) continue;
 
       items.push({
         chatId,
         messageId: message.id,
         chatTitle: getChatTitle(global, chatId),
-        text,
+        text: classifyText,
         timestamp,
         category: itemCategory,
         viewsCount: message.viewsCount,
@@ -80,6 +100,8 @@ export function collectFeed(global: GlobalState, options: FeedOptions = {}): Fee
           0,
         ),
         isForwarded,
+        photoHash,
+        mediaKind,
       });
     }
   }
@@ -94,7 +116,8 @@ export function getCategoryCounts(
 ): Record<CategoryKey, number> {
   const cutoff = Date.now() - windowMs;
   const counts: Record<CategoryKey, number> = {
-    event: 0, announcement: 0, market: 0, chat: 0,
+    event: 0, announcement: 0, coin: 0, stock: 0, chart: 0,
+    breaking: 0, guide: 0, scam: 0, project: 0, chat: 0,
   };
 
   for (const chatId of Object.keys(global.messages.byChatId)) {

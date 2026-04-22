@@ -1,16 +1,20 @@
 import {
-  memo, useEffect, useMemo, useState,
+  memo, useEffect, useMemo, useRef, useState,
 } from '../../lib/teact/teact';
 import { getGlobal } from '../../global';
 
 import type { CategoryKey } from '../../util/categoryClassifier';
-import { ALL_CATEGORIES, getCategoryDef } from '../../util/categoryClassifier';
+import { ALL_CATEGORIES } from '../../util/categoryClassifier';
 import {
   collectFeed, getCategoryCounts, type FeedItem,
 } from '../../util/messageFeed';
 import {
   backfillFromGlobal, getRanking, scanRecentMessages, subscribeKeywordTracker,
 } from '../../util/keywordTracker';
+
+import useHideForwarded from '../../hooks/useHideForwarded';
+
+import MessageCard from './MessageCard';
 
 import styles from './Dashboard.module.scss';
 
@@ -19,16 +23,6 @@ const WINDOW_MS = WINDOW_HOURS * 60 * 60 * 1000;
 const REFRESH_MS = 5000;
 const FEED_LIMIT = 200;
 
-function formatRelativeTime(timestamp: number): string {
-  const deltaMin = Math.max(0, Math.round((Date.now() - timestamp) / 60000));
-  if (deltaMin < 1) return '방금';
-  if (deltaMin < 60) return `${deltaMin}분 전`;
-  const hours = Math.floor(deltaMin / 60);
-  if (hours < 24) return `${hours}시간 전`;
-  const days = Math.floor(hours / 24);
-  return `${days}일 전`;
-}
-
 type Tab = 'all' | CategoryKey;
 
 const Dashboard = () => {
@@ -36,14 +30,16 @@ const Dashboard = () => {
   const [tab, setTab] = useState<Tab>('all');
   const [expandedId, setExpandedId] = useState<string | undefined>();
   const [tick, setTick] = useState(0);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const settingsRef = useRef<HTMLDivElement>();
 
-  // Refresh whenever tracker pushes or every REFRESH_MS
+  const { isHideForwardedMessages, toggleHideForwarded } = useHideForwarded();
+
   useEffect(() => {
     const bump = () => setTick((t) => (t + 1) % 1_000_000);
     const unsub = subscribeKeywordTracker(bump);
 
-    const globalNow = getGlobal();
-    void backfillFromGlobal(globalNow);
+    void backfillFromGlobal(getGlobal());
 
     const interval = window.setInterval(() => {
       scanRecentMessages(getGlobal());
@@ -56,11 +52,21 @@ const Dashboard = () => {
     };
   }, []);
 
+  useEffect(() => {
+    if (!isSettingsOpen) return undefined;
+    const handler = (e: MouseEvent) => {
+      if (settingsRef.current && !settingsRef.current.contains(e.target as Node)) {
+        setIsSettingsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [isSettingsOpen]);
+
   const global = getGlobal();
 
   const categoryCounts = useMemo(
     () => getCategoryCounts(global, WINDOW_MS),
-    // Re-run when tick or global.messages shape changes
     // eslint-disable-next-line react-hooks-static-deps/exhaustive-deps
     [tick, global.messages],
   );
@@ -71,13 +77,16 @@ const Dashboard = () => {
       category: tab,
       search,
       limit: FEED_LIMIT,
+      includeForwarded: !isHideForwardedMessages,
     });
     // eslint-disable-next-line react-hooks-static-deps/exhaustive-deps
-  }, [tick, tab, search, global.messages]);
+  }, [tick, tab, search, global.messages, isHideForwardedMessages]);
 
   const trending = useMemo(() => getRanking(10), [tick]);
 
-  const totalCount = feed.length;
+  const totalChannels = Object.keys(global.chats.byId).filter(
+    (id) => global.chats.byId[id]?.type === 'chatTypeChannel',
+  ).length;
 
   return (
     <div className={styles.dashboard}>
@@ -92,10 +101,29 @@ const Dashboard = () => {
             onChange={(e) => setSearch(e.currentTarget.value)}
           />
         </div>
-        <div className={styles.headerActions}>
-          최근 {WINDOW_HOURS}시간 · 채널 {Object.keys(global.chats.byId).filter(
-            (id) => global.chats.byId[id]?.type === 'chatTypeChannel',
-          ).length}개
+        <div className={styles.headerActions} ref={settingsRef}>
+          <span>최근 {WINDOW_HOURS}h · 채널 {totalChannels}</span>
+          <button
+            type="button"
+            className={styles.settingsBtn}
+            onClick={() => setIsSettingsOpen((v) => !v)}
+            aria-label="Settings"
+          >
+            ⚙ 설정
+          </button>
+          {isSettingsOpen && (
+            <div className={styles.settingsPopover}>
+              <label className={styles.settingRow}>
+                <span className={styles.settingLabel}>포워딩 메시지 숨기기</span>
+                <input
+                  type="checkbox"
+                  className={styles.settingToggle}
+                  checked={isHideForwardedMessages}
+                  onChange={toggleHideForwarded}
+                />
+              </label>
+            </div>
+          )}
         </div>
       </div>
 
@@ -127,7 +155,7 @@ const Dashboard = () => {
           </div>
 
           <div className={styles.feed}>
-            {totalCount === 0 ? (
+            {feed.length === 0 ? (
               <div className={styles.emptyFeed}>
                 {search
                   ? '검색 결과 없음'
@@ -136,39 +164,13 @@ const Dashboard = () => {
             ) : (
               feed.map((item) => {
                 const id = `${item.chatId}:${item.messageId}`;
-                const isExpanded = expandedId === id;
-                const catDef = getCategoryDef(item.category);
-
                 return (
-                  <div
+                  <MessageCard
                     key={id}
-                    className={styles.card}
-                    onClick={() => setExpandedId(isExpanded ? undefined : id)}
-                  >
-                    <div className={styles.cardHead}>
-                      <span className={styles.cardChannel}>{item.chatTitle}</span>
-                      <span className={styles.cardCategory}>
-                        {catDef.emoji} {catDef.label}
-                      </span>
-                      {item.isForwarded && (
-                        <span className={styles.cardForward}>↪ forwarded</span>
-                      )}
-                      <span className={styles.cardTime}>
-                        {formatRelativeTime(item.timestamp)}
-                      </span>
-                    </div>
-                    <div
-                      className={`${styles.cardBody} ${isExpanded ? styles.expanded : ''}`}
-                    >
-                      {item.text}
-                    </div>
-                    {(item.viewsCount || item.reactionsCount) && (
-                      <div className={styles.cardFooter}>
-                        {item.viewsCount ? <span>👁 {item.viewsCount.toLocaleString()}</span> : undefined}
-                        {item.reactionsCount ? <span>💬 {item.reactionsCount}</span> : undefined}
-                      </div>
-                    )}
-                  </div>
+                    item={item}
+                    isExpanded={expandedId === id}
+                    onToggle={() => setExpandedId(expandedId === id ? undefined : id)}
+                  />
                 );
               })
             )}
