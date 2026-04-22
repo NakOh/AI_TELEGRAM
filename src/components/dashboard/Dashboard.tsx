@@ -16,6 +16,7 @@ import {
 
 import useHiddenCategories from '../../hooks/useHiddenCategories';
 import useHideForwarded from '../../hooks/useHideForwarded';
+import useOwnedChannels from '../../hooks/useOwnedChannels';
 
 import CommentsModal from './CommentsModal';
 import MessageCard from './MessageCard';
@@ -102,18 +103,7 @@ const Dashboard = () => {
     // eslint-disable-next-line react-hooks-static-deps/exhaustive-deps
   }, [tick, tab, search, global.messages, isHideForwardedMessages, channelFilter, hiddenCategories]);
 
-  const ownedChannels = useMemo(() => {
-    const out: Array<{ id: string; title: string }> = [];
-    for (const id of Object.keys(global.chats.byId)) {
-      const chat = global.chats.byId[id];
-      if (!chat || chat.type !== 'chatTypeChannel') continue;
-      if (!(chat.isCreator || chat.adminRights)) continue;
-      out.push({ id, title: chat.title || id });
-    }
-    out.sort((a, b) => a.title.localeCompare(b.title));
-    return out;
-    // eslint-disable-next-line react-hooks-static-deps/exhaustive-deps
-  }, [tick, global.chats]);
+  const ownedChannels = useOwnedChannels();
 
   const trending = useMemo(() => getRanking(10), [tick]);
 
@@ -164,11 +154,11 @@ const Dashboard = () => {
             <div className={styles.navSectionTitle}>내 채널</div>
             {ownedChannels.map((c) => {
               const chat = global.chats.byId[c.id];
-              if (!chat) return undefined;
               return (
                 <MyChannelItem
                   key={c.id}
                   chat={chat}
+                  fallbackTitle={c.title}
                   onClick={() => setChannelFilter(channelFilter === c.id ? undefined : c.id)}
                 />
               );
