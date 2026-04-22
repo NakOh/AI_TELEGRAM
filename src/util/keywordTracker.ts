@@ -41,6 +41,9 @@ const STOPWORDS = new Set([
   'has', 'was', 'were', 'been', 'will', 'your', 'our', 'all', 'can', 'but',
   'not', 'its', 'their', 'about', 'out', 'get', 'got', 'now', 'new', 'one',
   'two', 'may', 'say', 'says', 'said', 'just', 'also',
+  // URL-ish fragments that slip past the URL guard
+  'http', 'https', 'www', 'com', 'net', 'org', 'kr', 'co', 'io', 'app',
+  'html', 'utm', 'ref', 'src', 'bit', 'ly', 't.co', 'tco', 'png', 'jpg',
 ]);
 
 const PARTICLES = [
@@ -62,7 +65,9 @@ function stripParticle(word: string): string {
 
 function extractKeywords(text: string): string[] {
   if (!text) return [];
-  const tokens = text.split(/[\s.,!?…·“”""''()\[\]{}<>~@|\-—/\\\n\r\t:;"「」『』]+/);
+  // Strip URLs entirely before tokenizing
+  const cleaned = text.replace(/https?:\/\/\S+/g, ' ').replace(/\b[\w.-]+\.(?:com|net|org|io|co|kr|app|html|xyz|gg)\b\S*/gi, ' ');
+  const tokens = cleaned.split(/[\s.,!?…·“”""''()\[\]{}<>~@|\-—/\\\n\r\t:;"「」『』]+/);
   const result: string[] = [];
   for (const raw of tokens) {
     if (!raw) continue;
@@ -70,7 +75,6 @@ function extractKeywords(text: string): string[] {
       result.push(raw.toLowerCase());
       continue;
     }
-    if (/^https?:/.test(raw)) continue;
     let token = raw.replace(/^[^\p{L}\p{N}#$]+|[^\p{L}\p{N}]+$/gu, '');
     if (!token) continue;
     token = stripParticle(token);
@@ -176,13 +180,12 @@ export function getRanking(limit = 10): Array<{ keyword: string; count: number }
   return Array.from(perKeyword.entries())
     .map(([keyword, { count, chats }]) => {
       const chatCount = Math.max(chats.size, 1);
-      const idf = Math.log((totalChats + 1) / chatCount) + 1;
-      const score = count * idf;
-      return { keyword, count, chatCount, score };
+      return { keyword, count, chatCount };
     })
     .filter(({ count }) => count >= MIN_COUNT)
+    // Drop keywords spread across most of the chats (too generic to be trending)
     .filter(({ chatCount }) => totalChats < 4 || chatCount <= totalChats * GENERIC_CHAT_RATIO)
-    .sort((a, b) => b.score - a.score)
+    .sort((a, b) => b.count - a.count)
     .slice(0, limit)
     .map(({ keyword, count }) => ({ keyword, count }));
 }
