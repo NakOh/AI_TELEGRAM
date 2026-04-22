@@ -53,9 +53,20 @@ const cached: { list: OwnedChannel[]; signature: string } = {
 const listeners = new Set<() => void>();
 
 function refresh() {
+  const global = getGlobal();
+  // Only reconcile once the chat list has actually loaded; otherwise
+  // scan() returns [] and we'd clobber the cache from the previous
+  // session until messages arrive.
+  const chatsLoaded = Boolean(global.chats.listIds.active?.length);
+  if (!chatsLoaded) return;
+
   const next = scan();
   const signature = next.map((c) => `${c.id}:${c.title}`).join('|');
   if (signature === cached.signature && next.length === cached.list.length) return;
+  if (next.length === 0 && cached.list.length > 0) {
+    // Safety net: never overwrite a populated cache with an empty scan.
+    return;
+  }
   cached.list = next;
   cached.signature = signature;
   writeCache(next);
