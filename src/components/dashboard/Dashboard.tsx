@@ -4,6 +4,7 @@ import {
 import { getActions, getGlobal } from '../../global';
 
 import { MAIN_THREAD_ID } from '../../api/types';
+import { LoadMoreDirection } from '../../types';
 
 import type { CategoryKey } from '../../util/categoryClassifier';
 import { ALL_CATEGORIES } from '../../util/categoryClassifier';
@@ -44,13 +45,41 @@ const Dashboard = () => {
   const { isHideForwardedMessages, toggleHideForwarded } = useHideForwarded();
   const { hiddenCategories, toggleHidden } = useHiddenCategories();
 
-  // Load history when a single channel is selected (owned channel click)
+  // Load history when a single channel is selected. Keeps fetching older
+  // batches until the message count stops growing — effectively full history.
   useEffect(() => {
-    if (!channelFilter) return;
-    getActions().loadViewportMessages({
-      chatId: channelFilter,
-      threadId: MAIN_THREAD_ID,
-    });
+    if (!channelFilter) return undefined;
+    let cancelled = false;
+    let prevCount = 0;
+    let stableTicks = 0;
+
+    const actions = getActions();
+    actions.loadViewportMessages({ chatId: channelFilter, threadId: MAIN_THREAD_ID });
+
+    const pullOlder = () => {
+      if (cancelled || !channelFilter) return;
+      actions.loadViewportMessages({
+        chatId: channelFilter,
+        threadId: MAIN_THREAD_ID,
+        direction: LoadMoreDirection.Backwards,
+      });
+      const byId = getGlobal().messages.byChatId[channelFilter]?.byId;
+      const count = byId ? Object.keys(byId).length : 0;
+      if (count === prevCount) {
+        stableTicks += 1;
+        if (stableTicks >= 4) return;
+      } else {
+        stableTicks = 0;
+      }
+      prevCount = count;
+      window.setTimeout(pullOlder, 700);
+    };
+
+    const timer = window.setTimeout(pullOlder, 500);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
   }, [channelFilter]);
 
   useEffect(() => {
@@ -91,10 +120,10 @@ const Dashboard = () => {
 
   const feed: FeedItem[] = useMemo(() => {
     const raw = collectFeed(global, {
-      windowMs: channelFilter ? 365 * 24 * 60 * 60 * 1000 : WINDOW_MS,
+      windowMs: channelFilter ? Number.MAX_SAFE_INTEGER : WINDOW_MS,
       category: channelFilter ? 'all' : tab,
       search,
-      limit: FEED_LIMIT,
+      limit: channelFilter ? 2000 : FEED_LIMIT,
       includeForwarded: !isHideForwardedMessages,
       chatId: channelFilter,
     });
@@ -215,13 +244,18 @@ const Dashboard = () => {
         </div>
 
         {channelFilter && (
-          <div className={styles.channelComposerWrap}>
-            <MiniComposer
-              chatId={channelFilter}
-              threadId={MAIN_THREAD_ID}
-              placeholder="무슨 공지를 작성하시겠어요?"
-            />
-          </div>
+          <>
+            <div className={styles.channelComposerWrap}>
+              <MiniComposer
+                chatId={channelFilter}
+                threadId={MAIN_THREAD_ID}
+                placeholder="무슨 공지를 작성하시겠어요?"
+              />
+            </div>
+            <div className={styles.channelMeta}>
+              {feed.length}개 로드됨 · 전체 히스토리 자동 로드 중
+            </div>
+          </>
         )}
 
         <div className={styles.feed}>
