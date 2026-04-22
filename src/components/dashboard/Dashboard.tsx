@@ -88,129 +88,140 @@ const Dashboard = () => {
     (id) => global.chats.byId[id]?.type === 'chatTypeChannel',
   ).length;
 
+  const totalAll = Object.values(categoryCounts).reduce((a, b) => a + b, 0);
+
+  const currentTitle = tab === 'all'
+    ? '홈'
+    : `${ALL_CATEGORIES.find((c) => c.key === tab)?.emoji || ''} ${ALL_CATEGORIES.find((c) => c.key === tab)?.label || ''}`;
+
   return (
     <div className={styles.dashboard}>
-      <div className={styles.header}>
-        <div className={styles.brand}>📊 Telegram Dashboard</div>
-        <div className={styles.searchBox}>
+      {/* Left nav */}
+      <aside className={styles.leftNav}>
+        <div className={styles.brand}>📊 TG Dash</div>
+        <button
+          type="button"
+          className={`${styles.navItem} ${tab === 'all' ? styles.navItemActive : ''}`}
+          onClick={() => setTab('all')}
+        >
+          <span className={styles.navIcon}>🏠</span>
+          <span>전체</span>
+          <span className={styles.navCount}>{totalAll}</span>
+        </button>
+        {ALL_CATEGORIES.map((cat) => (
+          <button
+            key={cat.key}
+            type="button"
+            className={`${styles.navItem} ${tab === cat.key ? styles.navItemActive : ''}`}
+            onClick={() => setTab(cat.key)}
+          >
+            <span className={styles.navIcon}>{cat.emoji}</span>
+            <span>{cat.label}</span>
+            <span className={styles.navCount}>{categoryCounts[cat.key] || 0}</span>
+          </button>
+        ))}
+        <div className={styles.navSpacer} />
+        <div className={styles.navFooter}>
+          채널 {totalChannels} · 최근 {WINDOW_HOURS}시간
+        </div>
+      </aside>
+
+      {/* Center feed */}
+      <section className={styles.feedColumn}>
+        <div className={styles.feedHeader}>
+          <div className={styles.feedTitle}>{currentTitle}</div>
+          <div className={styles.feedSub}>{feed.length}개</div>
+          <div className={styles.settingsWrap} ref={settingsRef}>
+            <button
+              type="button"
+              className={styles.settingsBtn}
+              onClick={() => setIsSettingsOpen((v) => !v)}
+            >
+              ⚙
+            </button>
+            {isSettingsOpen && (
+              <div className={styles.settingsPopover}>
+                <label className={styles.settingRow}>
+                  <span>포워딩 메시지 숨기기</span>
+                  <input
+                    type="checkbox"
+                    className={styles.settingToggle}
+                    checked={isHideForwardedMessages}
+                    onChange={toggleHideForwarded}
+                  />
+                </label>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className={styles.feed}>
+          {feed.length === 0 ? (
+            <div className={styles.emptyFeed}>
+              {search
+                ? '검색 결과 없음'
+                : '수집된 채널 메시지가 없습니다. 잠시 후 자동으로 채워집니다.'}
+            </div>
+          ) : (
+            feed.map((item) => {
+              const id = `${item.chatId}:${item.messageId}`;
+              return (
+                <MessageCard
+                  key={id}
+                  item={item}
+                  isExpanded={expandedId === id}
+                  onToggle={() => setExpandedId(expandedId === id ? undefined : id)}
+                />
+              );
+            })
+          )}
+        </div>
+      </section>
+
+      {/* Right panel */}
+      <aside className={styles.rightColumn}>
+        <div className={styles.searchWrap}>
           <input
             type="search"
             className={styles.searchInput}
-            placeholder="검색 (채널/키워드/본문)"
+            placeholder="🔍  검색"
             value={search}
             onChange={(e) => setSearch(e.currentTarget.value)}
           />
         </div>
-        <div className={styles.headerActions} ref={settingsRef}>
-          <span>최근 {WINDOW_HOURS}h · 채널 {totalChannels}</span>
-          <button
-            type="button"
-            className={styles.settingsBtn}
-            onClick={() => setIsSettingsOpen((v) => !v)}
-            aria-label="Settings"
-          >
-            ⚙ 설정
-          </button>
-          {isSettingsOpen && (
-            <div className={styles.settingsPopover}>
-              <label className={styles.settingRow}>
-                <span className={styles.settingLabel}>포워딩 메시지 숨기기</span>
-                <input
-                  type="checkbox"
-                  className={styles.settingToggle}
-                  checked={isHideForwardedMessages}
-                  onChange={toggleHideForwarded}
-                />
-              </label>
-            </div>
-          )}
-        </div>
-      </div>
 
-      <div className={styles.body}>
-        <div className={styles.feedColumn}>
-          <div className={styles.tabs}>
-            <button
-              type="button"
-              className={`${styles.tab} ${tab === 'all' ? styles.tabActive : ''}`}
-              onClick={() => setTab('all')}
-            >
-              전체
-              <span className={styles.tabCount}>
-                {Object.values(categoryCounts).reduce((a, b) => a + b, 0)}
-              </span>
-            </button>
-            {ALL_CATEGORIES.map((cat) => (
-              <button
-                key={cat.key}
-                type="button"
-                className={`${styles.tab} ${tab === cat.key ? styles.tabActive : ''}`}
-                onClick={() => setTab(cat.key)}
-              >
-                <span>{cat.emoji}</span>
-                {cat.label}
-                <span className={styles.tabCount}>{categoryCounts[cat.key] || 0}</span>
-              </button>
-            ))}
-          </div>
-
-          <div className={styles.feed}>
-            {feed.length === 0 ? (
-              <div className={styles.emptyFeed}>
-                {search
-                  ? '검색 결과 없음'
-                  : '수집된 채널 메시지가 없습니다. 잠시 후 자동으로 채워집니다.'}
-              </div>
-            ) : (
-              feed.map((item) => {
-                const id = `${item.chatId}:${item.messageId}`;
-                return (
-                  <MessageCard
-                    key={id}
-                    item={item}
-                    isExpanded={expandedId === id}
-                    onToggle={() => setExpandedId(expandedId === id ? undefined : id)}
-                  />
-                );
-              })
-            )}
-          </div>
-        </div>
-
-        <div className={styles.sideColumn}>
-          <div className={styles.sideCard}>
-            <div className={styles.sideCardTitle}>🔥 실시간 키워드 · 1h</div>
-            {trending.length === 0 ? (
-              <div className={styles.emptyFeed}>수집 중…</div>
-            ) : (
-              <ol className={styles.trendingList}>
-                {trending.map(({ keyword, count }, i) => (
-                  <li key={keyword} className={styles.trendingItem}>
-                    <span className={styles.trendingRank}>{i + 1}</span>
-                    <span className={styles.trendingKeyword}>{keyword}</span>
-                    <span className={styles.trendingCount}>{count}</span>
-                  </li>
-                ))}
-              </ol>
-            )}
-          </div>
-
-          <div className={styles.sideCard}>
-            <div className={styles.sideCardTitle}>카테고리 분포 · {WINDOW_HOURS}h</div>
+        <div className={styles.sideCard}>
+          <div className={styles.sideCardTitle}>🔥 실시간 키워드</div>
+          {trending.length === 0 ? (
+            <div className={styles.emptyFeed}>수집 중…</div>
+          ) : (
             <ol className={styles.trendingList}>
-              {ALL_CATEGORIES.map((cat) => (
-                <li key={cat.key} className={styles.trendingItem}>
-                  <span className={styles.trendingRank}>{cat.emoji}</span>
-                  <span className={styles.trendingKeyword}>{cat.label}</span>
-                  <span className={styles.trendingCount}>
-                    {categoryCounts[cat.key] || 0}
-                  </span>
+              {trending.map(({ keyword, count }, i) => (
+                <li key={keyword} className={styles.trendingItem}>
+                  <span className={styles.trendingRank}>{i + 1}</span>
+                  <span className={styles.trendingKeyword}>{keyword}</span>
+                  <span className={styles.trendingCount}>{count}</span>
                 </li>
               ))}
             </ol>
-          </div>
+          )}
         </div>
-      </div>
+
+        <div className={styles.sideCard}>
+          <div className={styles.sideCardTitle}>카테고리</div>
+          <ol className={styles.trendingList}>
+            {ALL_CATEGORIES.map((cat) => (
+              <li key={cat.key} className={styles.trendingItem}>
+                <span className={styles.trendingRank}>{cat.emoji}</span>
+                <span className={styles.trendingKeyword}>{cat.label}</span>
+                <span className={styles.trendingCount}>
+                  {categoryCounts[cat.key] || 0}
+                </span>
+              </li>
+            ))}
+          </ol>
+        </div>
+      </aside>
     </div>
   );
 };
