@@ -6,7 +6,7 @@ const RECENT_MS = 15 * 60 * 1000;
 const MAX_ENTRIES = 15000;
 const MIN_COUNT = 2;
 const GENERIC_CHAT_RATIO = 0.6;
-const STORAGE_KEY = 'trendingEntriesV2';
+const STORAGE_KEY = 'trendingEntriesV3';
 const SAVE_DEBOUNCE_MS = 3000;
 
 type Entry = {
@@ -43,6 +43,10 @@ const STOPWORDS = new Set([
   '신청', '조건', '참여', '발표', '공지', '안내', '소식', '최근',
   '시작', '종료', '진행', '확인', '가능', '필요', '사용', '이용',
   '관련', '경우', '부분', '내용', '상태', '상황', '방법', '결과',
+  '예정', '예상', '기준', '현재', '최신', '계획', '일정', '기간',
+  '이상', '이하', '미만', '초과', '정도', '약간', '대략',
+  '모든', '각각', '전체', '일부', '기타', '등등',
+  '생각', '경험', '느낌', '감사', '축하', '환영', '응원',
   'the', 'and', 'for', 'you', 'are', 'with', 'that', 'this', 'from', 'have',
   'has', 'was', 'were', 'been', 'will', 'your', 'our', 'all', 'can', 'but',
   'not', 'its', 'their', 'about', 'out', 'get', 'got', 'now', 'new', 'one',
@@ -89,8 +93,8 @@ function keywordShapeBoost(original: string): number {
   if (original.startsWith('#') || original.startsWith('$')) return 2;
   // All-caps English 2-6 chars (tickers, acronyms)
   if (/^[A-Z]{2,6}$/.test(original)) return 1.6;
-  // Mixed Korean + ASCII (ex: 스페이스X, 1000x)
-  if (/[\uac00-\ud7af]/.test(original) && /[A-Za-z0-9]/.test(original)) return 1.3;
+  // Mixed Korean + Latin letters (ex: 스페이스X) — letters only, not bare digits
+  if (/[\uac00-\ud7af]/.test(original) && /[A-Za-z]/.test(original)) return 1.3;
   // Proper-noun-ish: starts with capital, contains digits or X
   if (/^[A-Z][A-Za-z0-9]{2,}$/.test(original)) return 1.25;
   return 1;
@@ -122,6 +126,10 @@ function extractKeywords(text: string): Extracted[] {
     if (lower.length < 2) continue;
     if (/^\d+$/.test(lower)) continue;
     if (/^[a-z0-9]+$/.test(lower) && lower.length < 3) continue;
+    // Pure date/time/unit tokens: 5월, 18일, 3시, 2024년, 30분, 10회, 5위, 1등, 3개월...
+    if (/^\d+(월|일|년|시|분|초|주|차|호|개|명|번|회|위|점|등|대|년도|개월|주년|주일|시간|분기|분기별)$/.test(lower)) continue;
+    // Pure currency/amount tokens: 1000원, 50달러, 10만원, 5억, 3천, 20%
+    if (/^\d+(원|달러|엔|유로|만원|억|조|천만|백만|만|천|백|십|%|퍼센트)$/.test(lower)) continue;
     if (STOPWORDS.has(lower)) continue;
     result.push({ keyword: lower, boost });
   }
