@@ -9,7 +9,7 @@ import type { ApiChat, ApiMessage } from '../../api/types';
 import { callApi } from '../../api/gramjs';
 
 import useMedia from '../../hooks/useMedia';
-import { getChatAvatarHash } from '../../global/helpers';
+import { getChatAvatarHash, getPhotoMediaHash } from '../../global/helpers';
 
 import MiniComposer from './MiniComposer';
 import ReactionsBar from './ReactionsBar';
@@ -26,9 +26,16 @@ type OwnProps = {
 type LoadState =
   | { kind: 'loading' }
   | { kind: 'error'; message: string }
-  | { kind: 'ready'; topMessages: ApiMessage[]; replies: ApiMessage[]; discussionChatId: string; threadId: number };
+  | { kind: 'ready'; replies: ApiMessage[]; discussionChatId: string; threadId: number };
 
 function formatDate(ts: number): string {
+  const d = new Date(ts);
+  const h = String(d.getHours()).padStart(2, '0');
+  const m = String(d.getMinutes()).padStart(2, '0');
+  return `${d.getFullYear()}.${d.getMonth() + 1}.${d.getDate()} ${h}:${m}`;
+}
+
+function formatShort(ts: number): string {
   const d = new Date(ts);
   const now = new Date();
   const sameDay = d.toDateString() === now.toDateString();
@@ -41,6 +48,47 @@ function formatDate(ts: number): string {
 function getChat(chatId: string): ApiChat | undefined {
   return getGlobal().chats.byId[chatId];
 }
+
+const PostBody = memo(({ chatId, message }: { chatId: string; message: ApiMessage }) => {
+  const chat = getChat(chatId);
+  const avatarUrl = useMedia(chat ? getChatAvatarHash(chat) : undefined);
+  const photoHash = message.content?.photo ? getPhotoMediaHash(message.content.photo, 'preview') : undefined;
+  const imageUrl = useMedia(photoHash);
+
+  const title = chat?.title || chatId;
+  const firstLetter = title[0] || '#';
+  const text = message.content?.text?.text;
+  const entities = message.content?.text?.entities;
+  const ts = (message.date || 0) * 1000;
+
+  return (
+    <div className={styles.post}>
+      <div className={styles.postHead}>
+        <div className={styles.postAvatar}>
+          {avatarUrl ? <img src={avatarUrl} alt="" /> : firstLetter}
+        </div>
+        <div className={styles.postHeadMain}>
+          <div className={styles.postChannel}>{title}</div>
+          <div className={styles.postTime}>{formatDate(ts)}</div>
+        </div>
+      </div>
+      {text && (
+        <div className={styles.postText}>
+          {renderEntities(text, entities)}
+        </div>
+      )}
+      {imageUrl && (
+        <div className={styles.postImageWrap}>
+          <img src={imageUrl} alt="" className={styles.postImage} />
+        </div>
+      )}
+      <div className={styles.postStats}>
+        {message.viewsCount ? <span>👁 {message.viewsCount.toLocaleString()}</span> : undefined}
+      </div>
+      <ReactionsBar chatId={chatId} message={message} />
+    </div>
+  );
+});
 
 const CommentRow = memo(({ discussionChatId, message }: { discussionChatId: string; message: ApiMessage }) => {
   const senderId = message.senderId;
@@ -64,9 +112,7 @@ const CommentRow = memo(({ discussionChatId, message }: { discussionChatId: stri
       <div className={styles.replyBody}>
         <div className={styles.replyHead}>
           <span className={styles.replyName}>{name}</span>
-          <span className={styles.replyTime}>
-            {formatDate((message.date || 0) * 1000)}
-          </span>
+          <span className={styles.replyTime}>{formatShort((message.date || 0) * 1000)}</span>
         </div>
         {text && (
           <div className={styles.replyText}>
@@ -81,6 +127,9 @@ const CommentRow = memo(({ discussionChatId, message }: { discussionChatId: stri
 
 const CommentsModal = ({ chatId, messageId, onClose }: OwnProps) => {
   const [state, setState] = useState<LoadState>({ kind: 'loading' });
+
+  const global = getGlobal();
+  const post = global.messages.byChatId[chatId]?.byId[messageId];
 
   const reload = () => {
     const chat = getChat(chatId);
@@ -101,7 +150,6 @@ const CommentsModal = ({ chatId, messageId, onClose }: OwnProps) => {
         const discussionChatId = result.topMessages[0]?.chatId || chatId;
         setState({
           kind: 'ready',
-          topMessages: result.topMessages,
           replies,
           discussionChatId,
           threadId: result.threadId,
@@ -118,7 +166,6 @@ const CommentsModal = ({ chatId, messageId, onClose }: OwnProps) => {
     // eslint-disable-next-line react-hooks-static-deps/exhaustive-deps
   }, [chatId, messageId]);
 
-  // Poll for new replies every 10s while the modal is open
   useEffect(() => {
     if (state.kind !== 'ready') return undefined;
     const interval = window.setInterval(reload, 10000);
@@ -134,13 +181,32 @@ const CommentsModal = ({ chatId, messageId, onClose }: OwnProps) => {
     <div className={styles.backdrop} onClick={handleBackdrop}>
       <div className={styles.modal}>
         <div className={styles.header}>
-          <div className={styles.title}>댓글</div>
           <button type="button" className={styles.close} onClick={onClose} aria-label="Close">
-            ✕
+            ←
           </button>
+          <div className={styles.title}>게시물</div>
         </div>
 
         <div className={styles.content}>
+          {post && <PostBody chatId={chatId} message={post} />}
+
+          {state.kind === 'ready' && (
+            <div className={styles.composerWrap}>
+              <MiniComposer
+                chatId={state.discussionChatId}
+                threadId={state.threadId}
+                messageListType="thread"
+                placeholder="답글을 작성하세요"
+              />
+            </div>
+          )}
+
+          <div className={styles.divider}>
+            {state.kind === 'ready'
+              ? `댓글 ${state.replies.length}${state.replies.length >= 100 ? '+' : ''}`
+              : '댓글'}
+          </div>
+
           {state.kind === 'loading' && (
             <div className={styles.stateNote}>댓글 불러오는 중…</div>
           )}
@@ -148,40 +214,17 @@ const CommentsModal = ({ chatId, messageId, onClose }: OwnProps) => {
             <div className={styles.stateNote}>{state.message}</div>
           )}
           {state.kind === 'ready' && (
-            <>
-              {state.topMessages.map((m) => (
-                <div key={m.id} className={styles.topMessage}>
-                  {m.content?.text?.text && (
-                    <div className={styles.topMessageText}>
-                      {renderEntities(m.content.text.text, m.content.text.entities)}
-                    </div>
-                  )}
-                  <ReactionsBar chatId={state.discussionChatId} message={m} />
-                </div>
-              ))}
-              <div className={styles.replyList}>
-                {state.replies.length === 0 ? (
-                  <div className={styles.stateNote}>아직 댓글이 없습니다.</div>
-                ) : (
-                  state.replies.map((m) => (
-                    <CommentRow key={m.id} discussionChatId={state.discussionChatId} message={m} />
-                  ))
-                )}
-              </div>
-            </>
+            <div className={styles.replyList}>
+              {state.replies.length === 0 ? (
+                <div className={styles.stateNote}>아직 댓글이 없습니다.</div>
+              ) : (
+                state.replies.map((m) => (
+                  <CommentRow key={m.id} discussionChatId={state.discussionChatId} message={m} />
+                ))
+              )}
+            </div>
           )}
         </div>
-
-        {state.kind === 'ready' && (
-          <div className={styles.composerRegion}>
-            <MiniComposer
-              chatId={state.discussionChatId}
-              threadId={state.threadId}
-              messageListType="thread"
-              placeholder="답글을 작성하세요"
-            />
-          </div>
-        )}
       </div>
     </div>
   );
