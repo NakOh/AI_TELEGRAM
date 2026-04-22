@@ -17,15 +17,10 @@ import {
 import useHiddenCategories from '../../hooks/useHiddenCategories';
 import useHideForwarded from '../../hooks/useHideForwarded';
 
-import Composer from '../common/Composer';
-
 import CommentsModal from './CommentsModal';
 import MessageCard from './MessageCard';
 import MiniComposer from './MiniComposer';
 import MyChannelItem from './MyChannelItem';
-
-const CHANNEL_INPUT_ID = 'dashboard-channel-input';
-const CHANNEL_INPUT_SELECTOR = `#${CHANNEL_INPUT_ID}`;
 
 import styles from './Dashboard.module.scss';
 
@@ -48,13 +43,10 @@ const Dashboard = () => {
   const { isHideForwardedMessages, toggleHideForwarded } = useHideForwarded();
   const { hiddenCategories, toggleHidden } = useHiddenCategories();
 
-  // Load history when a single channel is selected, and make it the
-  // current message list so the upstream Composer has a valid context.
+  // Load history when a single channel is selected (owned channel click)
   useEffect(() => {
     if (!channelFilter) return;
-    const actions = getActions();
-    actions.openChat({ id: channelFilter });
-    actions.loadViewportMessages({
+    getActions().loadViewportMessages({
       chatId: channelFilter,
       threadId: MAIN_THREAD_ID,
     });
@@ -234,16 +226,10 @@ const Dashboard = () => {
 
         {channelFilter && (
           <div className={styles.channelComposerWrap}>
-            <Composer
-              type="messageList"
+            <MiniComposer
               chatId={channelFilter}
               threadId={MAIN_THREAD_ID}
-              messageListType="thread"
-              isReady
-              editableInputId={CHANNEL_INPUT_ID}
-              editableInputCssSelector={CHANNEL_INPUT_SELECTOR}
-              inputId={`${CHANNEL_INPUT_ID}-wrap`}
-              inputPlaceholder="채널에 공지 작성…"
+              placeholder="무슨 공지를 작성하시겠어요?"
             />
           </div>
         )}
