@@ -78,7 +78,7 @@ import StoryViewer from '../story/StoryViewer.async';
 import AttachBotRecipientPicker from './AttachBotRecipientPicker.async';
 import BotTrustModal from './BotTrustModal.async';
 import DeleteFolderDialog from './DeleteFolderDialog.async';
-import TrendingPanel from '../TrendingPanel';
+import Dashboard from '../dashboard/Dashboard';
 import Dialogs from './Dialogs';
 import DownloadManager from './DownloadManager';
 import DraftRecipientPicker from './DraftRecipientPicker.async';
@@ -576,10 +576,7 @@ const Main = ({
 
   return (
     <div ref={containerRef} id="Main" className={className}>
-      <FoldersSidebar isMobile={isMobile} isActive={isFoldersSidebarShown} />
-      <LeftColumn ref={leftColumnRef} isFoldersSidebarShown={isFoldersSidebarShown} />
-      <MiddleColumn leftColumnRef={leftColumnRef} isMobile={isMobile} />
-      <RightColumn isMobile={isMobile} />
+      <Dashboard />
       <MediaViewer isOpen={isMediaViewerOpen} />
       <StoryViewer isOpen={isStoryViewerOpen} />
       <ForwardRecipientPicker isOpen={isForwardModalOpen} />
@@ -629,7 +626,6 @@ const Main = ({
       <DeleteFolderDialog folder={deleteFolderDialog} />
       <ReactionPicker isOpen={isReactionPickerOpen} />
       <DeleteMessageModal isOpen={isDeleteMessageModalOpen} />
-      <TrendingPanel />
     </div>
   );
 };
