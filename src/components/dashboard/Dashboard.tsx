@@ -47,6 +47,8 @@ const Dashboard = () => {
 
   // Load history when a single channel is selected. Keeps fetching older
   // batches until the message count stops growing — effectively full history.
+  // Also marks the chat as the current message list so the persistent
+  // IndexedDB cache (src/global/cache.ts) keeps its messages across refresh.
   useEffect(() => {
     if (!channelFilter) return undefined;
     let cancelled = false;
@@ -54,6 +56,7 @@ const Dashboard = () => {
     let stableTicks = 0;
 
     const actions = getActions();
+    actions.openChat({ id: channelFilter });
     actions.loadViewportMessages({ chatId: channelFilter, threadId: MAIN_THREAD_ID });
 
     const pullOlder = () => {

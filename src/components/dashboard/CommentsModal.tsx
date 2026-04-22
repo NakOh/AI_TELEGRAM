@@ -2,7 +2,7 @@ import type React from '../../lib/teact/teact';
 import {
   memo, useEffect, useState,
 } from '../../lib/teact/teact';
-import { getGlobal } from '../../global';
+import { getActions, getGlobal } from '../../global';
 
 import type { ApiChat, ApiMessage } from '../../api/types';
 
@@ -161,6 +161,9 @@ const CommentsModal = ({ chatId, messageId, onClose }: OwnProps) => {
   };
 
   useEffect(() => {
+    // Mark the chat as current so its messages persist in the IndexedDB
+    // cache between refreshes.
+    getActions().openChat({ id: chatId });
     setState({ kind: 'loading' });
     reload();
     // eslint-disable-next-line react-hooks-static-deps/exhaustive-deps
